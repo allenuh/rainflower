@@ -9,6 +9,8 @@ import {
   WebGLRenderer,
 } from 'three';
 
+import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+
 const scene = new Scene();
 
 const ground = new Mesh(
@@ -30,4 +32,15 @@ camera.lookAt(0, 0, 0);
 const renderer = new WebGLRenderer();
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
+
+const controls = new PointerLockControls(camera, renderer.domElement);
+
+renderer.domElement.addEventListener('click', () => {
+  if (!controls.isLocked) controls.lock();
+});
+
+controls.addEventListener('change', () => {
+  renderer.render(scene, camera);
+});
+
 renderer.render(scene, camera);
