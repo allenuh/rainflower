@@ -15,9 +15,12 @@ import {
   type BufferGeometry,
   type ColorRepresentation,
 } from 'three';
+import { createPrimitiveColliders } from '../physics/colliders';
+import type { Physics } from '../physics/world';
 
-export function createPrimitives() {
+export function createPrimitives(physics: Physics) {
   const group = new Group();
+  const shapes: Mesh[] = [];
 
   function addShape(
     geometry: BufferGeometry,
@@ -35,6 +38,7 @@ export function createPrimitives() {
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     group.add(mesh);
+    shapes.push(mesh);
     return mesh;
   }
 
@@ -48,6 +52,11 @@ export function createPrimitives() {
   ring.rotation.set(Math.PI / 5, Math.PI / 6, -Math.PI / 8);
   const diamond = addShape(new OctahedronGeometry(2.625), 0xffcc00, 13, 12, -17);
   diamond.rotation.set(0.2, Math.PI / 4, 0.2);
+
+  // Register after applying the initial rotations. Every current prop is dynamic.
+  for (const mesh of shapes) {
+    physics.addDynamicBody(mesh, createPrimitiveColliders(mesh.geometry));
+  }
 
   group.add(new AmbientLight(0xffffff, 0.2));
 

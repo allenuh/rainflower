@@ -46,7 +46,6 @@ const camera = new PerspectiveCamera(
 );
 camera.position.set(0, 5, 10);
 camera.lookAt(0, 0, 0);
-scene.add(createPrimitives());
 createTeapot()
   .then((teapot) => scene.add(teapot))
   .catch((error) => console.error('Unable to load the Utah teapot:', error));
@@ -129,6 +128,8 @@ function updatePlayer(deltaSeconds: number) {
 
 async function start() {
   const physics = await createPhysics();
+  physics.addFloor(ground.geometry.parameters.width, ground.geometry.parameters.height);
+  scene.add(createPrimitives(physics));
   const physicsDebug = createPhysicsDebug(physics.world);
   scene.add(physicsDebug.mesh);
 
@@ -152,6 +153,7 @@ async function start() {
     lastTime = time;
 
     physics.update(deltaSeconds);
+    physics.syncMeshes();
     updateMovementVelocity();
     updatePlayer(deltaSeconds);
 
