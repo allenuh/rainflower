@@ -1,22 +1,31 @@
 import './style.css';
 
 import {
+  Color,
   Mesh,
-  MeshBasicMaterial,
   PerspectiveCamera,
   PlaneGeometry,
   Scene,
+  ShaderMaterial,
   WebGLRenderer,
   Vector3,
 } from 'three';
 
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+import groundVertexShader from './shaders/ground.vert.glsl?raw';
+import groundFragmentShader from './shaders/ground.frag.glsl?raw';
 
 const scene = new Scene();
 
 const ground = new Mesh(
   new PlaneGeometry(100, 100),
-  new MeshBasicMaterial({ color: 0x808080 }),
+  new ShaderMaterial({
+    vertexShader: groundVertexShader,
+    fragmentShader: groundFragmentShader,
+    uniforms: {
+      uColor: { value: new Color(0x808080) },
+    },
+  }),
 );
 ground.rotation.x = -Math.PI / 2;
 scene.add(ground);
