@@ -14,8 +14,11 @@ import {
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import groundVertexShader from './shaders/ground.vert.glsl?raw';
 import groundFragmentShader from './shaders/ground.frag.glsl?raw';
+import { createSky } from './world/sky';
 
 const scene = new Scene();
+const sky = createSky();
+scene.add(sky);
 
 const ground = new Mesh(
   new PlaneGeometry(100, 100),
@@ -124,6 +127,7 @@ function animate(time: number) {
 
   camera.position.copy(player.position);
   camera.position.y += player.eyeHeight;
+  sky.position.copy(camera.position);
   renderer.render(scene, camera);
 }
 
