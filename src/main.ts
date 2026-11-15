@@ -3,6 +3,7 @@ import './style.css';
 import {
   Color,
   Mesh,
+  PCFShadowMap,
   PerspectiveCamera,
   PlaneGeometry,
   Scene,
@@ -15,6 +16,7 @@ import { PointerLockControls } from 'three/addons/controls/PointerLockControls.j
 import groundVertexShader from './shaders/ground.vert.glsl?raw';
 import groundFragmentShader from './shaders/ground.frag.glsl?raw';
 import { createSky } from './world/sky';
+import { createPrimitives } from './world/primitives';
 
 const scene = new Scene();
 const sky = createSky();
@@ -41,8 +43,11 @@ const camera = new PerspectiveCamera(
 );
 camera.position.set(0, 5, 10);
 camera.lookAt(0, 0, 0);
+scene.add(createPrimitives());
 
 const renderer = new WebGLRenderer();
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = PCFShadowMap;
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
