@@ -1,6 +1,21 @@
-import { PerspectiveCamera, Scene, WebGLRenderer } from 'three';
+import {
+  Mesh,
+  MeshBasicMaterial,
+  PerspectiveCamera,
+  PlaneGeometry,
+  Scene,
+  WebGLRenderer,
+} from 'three';
 
 const scene = new Scene();
+
+const ground = new Mesh(
+  new PlaneGeometry(100, 100),
+  new MeshBasicMaterial({ color: 0x808080 }),
+);
+ground.rotation.x = -Math.PI / 2;
+scene.add(ground);
+
 const camera = new PerspectiveCamera(
   75,
   window.innerWidth / window.innerHeight,
