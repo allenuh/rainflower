@@ -18,6 +18,8 @@ import groundFragmentShader from './shaders/ground.frag.glsl?raw';
 import { createSky } from './world/sky';
 import { createPrimitives } from './world/primitives';
 import { createTeapot } from './world/teapot';
+import { createPhysics } from './physics/world';
+import { createPhysicsDebug } from './physics/debug';
 
 const scene = new Scene();
 const sky = createSky();
@@ -125,19 +127,40 @@ function updatePlayer(deltaSeconds: number) {
   player.position.addScaledVector(player.velocity, deltaSeconds);
 }
 
-function animate(time: number) {
-  const deltaSeconds = lastTime === undefined
-    ? 0
-    : Math.min((time - lastTime) / 1000, maxDeltaSeconds);
-  lastTime = time;
+async function start() {
+  const physics = await createPhysics();
+  const physicsDebug = createPhysicsDebug(physics.world);
+  scene.add(physicsDebug.mesh);
 
-  updateMovementVelocity();
-  updatePlayer(deltaSeconds);
+  window.addEventListener('keydown', (event) => {
+    if (event.code !== 'F3') return;
+    event.preventDefault();
+    if (!event.repeat) physicsDebug.mesh.visible = !physicsDebug.mesh.visible;
+  });
 
-  camera.position.copy(player.position);
-  camera.position.y += player.eyeHeight;
-  sky.position.copy(camera.position);
-  renderer.render(scene, camera);
+  document.addEventListener('visibilitychange', () => {
+    resetMovement();
+    physics.reset();
+  });
+
+  renderer.setAnimationLoop((time: number) => {
+    if (document.hidden) return;
+
+    const deltaSeconds = lastTime === undefined
+      ? 0
+      : Math.min((time - lastTime) / 1000, maxDeltaSeconds);
+    lastTime = time;
+
+    physics.update(deltaSeconds);
+    updateMovementVelocity();
+    updatePlayer(deltaSeconds);
+
+    camera.position.copy(player.position);
+    camera.position.y += player.eyeHeight;
+    sky.position.copy(camera.position);
+    physicsDebug.update();
+    renderer.render(scene, camera);
+  });
 }
 
-renderer.setAnimationLoop(animate);
+start().catch((error) => console.error('Unable to initialize physics:', error));
