@@ -22,7 +22,10 @@ const camera = new PerspectiveCamera(
   0.1,
   1000,
 );
+camera.position.set(0, 5, 10);
+camera.lookAt(0, 0, 0);
 
 const renderer = new WebGLRenderer();
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
+renderer.render(scene, camera);
