@@ -3,6 +3,9 @@ import { Quaternion, Vector3, type Object3D } from 'three';
 
 const fixedTimeStep = 1 / 60;
 const maxStepsPerFrame = 5;
+const respawnBelowY = -100;
+const respawnPosition = { x: 0, y: 40, z: 0 };
+const respawnInterval = 1.5;
 
 export async function createPhysics() {
   await RAPIER.init();
@@ -10,11 +13,13 @@ export async function createPhysics() {
   const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
   world.timestep = fixedTimeStep;
   let accumulator = 0;
+  let respawnCooldown = 0;
   const objects: {
     mesh: Object3D;
     body: RAPIER.RigidBody;
     previousPosition: Vector3;
     previousRotation: Quaternion;
+    initialRotation: Quaternion;
   }[] = [];
   const position = new Vector3();
   const rotation = new Quaternion();
@@ -26,6 +31,24 @@ export async function createPhysics() {
       object.previousPosition.copy(object.body.translation());
       object.previousRotation.copy(object.body.rotation());
     }
+  }
+
+  function respawnFallenProp() {
+    respawnCooldown = Math.max(0, respawnCooldown - fixedTimeStep);
+    if (respawnCooldown > 0) return;
+    const object = objects.find(({ body }) => body.translation().y < respawnBelowY);
+    if (!object) return;
+
+    object.body.setTranslation(respawnPosition, true);
+    object.body.setRotation(object.initialRotation, true);
+    object.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    object.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    // Reset interpolation so teleporting doesn't draw a sweep from below the map.
+    object.previousPosition.copy(respawnPosition);
+    object.previousRotation.copy(object.initialRotation);
+    world.propagateModifiedBodyPositionsToColliders();
+    // Share the drop point without spawning multiple overlapping bodies.
+    respawnCooldown = respawnInterval;
   }
 
   return {
@@ -54,6 +77,7 @@ export async function createPhysics() {
         RAPIER.RigidBodyDesc.dynamic()
           .setTranslation(position.x, position.y, position.z)
           .setRotation(rotation)
+
           .setLinearDamping(0.05)
           .setAngularDamping(0.1)
           .setCcdEnabled(true),
@@ -68,6 +92,7 @@ export async function createPhysics() {
         body,
         previousPosition: position.clone(),
         previousRotation: rotation.clone(),
+        initialRotation: rotation.clone(),
       });
       return body;
     },
@@ -86,6 +111,7 @@ export async function createPhysics() {
         captureTransforms();
         beforeStep?.(fixedTimeStep);
         world.step();
+        respawnFallenProp();
         accumulator = Math.max(0, accumulator - fixedTimeStep);
         steps++;
       }

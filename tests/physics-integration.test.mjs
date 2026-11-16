@@ -30,8 +30,14 @@ async function replay(frameTimes) {
     let settled = false;
     let rolled = false;
     let contacted = false;
+    const bodies = [sphere.body, box.body, player.body];
+    const fellOff = bodies.map(() => false);
     for (const delta of frameTimes) {
       physics.update(delta, (step) => {
+        bodies.forEach((body, index) => {
+          const position = body.translation();
+          fellOff[index] ||= position.x > 6 && position.y < 0;
+        });
         // Observe the last completed tick, so monitoring also works with substeps.
         if (steps === 90) {
           settled = Math.abs(sphere.body.translation().y - 1) < 0.05
@@ -48,12 +54,12 @@ async function replay(frameTimes) {
       physics.syncMeshes();
     }
 
-    const bodies = [sphere.body, box.body, player.body];
     return {
       steps,
       settled,
       rolled,
       contacted,
+      fellOff,
       poses: bodies.map((body) => [
         ...Object.values(body.translation()),
         ...Object.values(body.rotation()),
@@ -74,8 +80,8 @@ test('a complete interaction settles, rolls, transfers contact, and falls off th
   assert.ok(result.contacted, 'The sphere should collide with the box');
   for (const [index, pose] of result.poses.entries()) {
     assert.ok(pose.every(Number.isFinite), `Body ${index} has a non-finite transform or velocity`);
-    assert.ok(pose[0] > 6, `Body ${index} should pass the finite floor edge`);
-    assert.ok(pose[1] < 0, `Body ${index} should fall below the floor`);
+    // Props may already have respawned by the final frame.
+    assert.ok(result.fellOff[index], `Body ${index} should fall beyond the finite floor edge`);
   }
 });
 
@@ -90,6 +96,7 @@ test('the complete interaction matches at 30, 60, 144, 240 Hz and irregular fram
     assert.equal(result.settled, reference.settled);
     assert.equal(result.rolled, reference.rolled);
     assert.equal(result.contacted, reference.contacted);
+    assert.deepEqual(result.fellOff, reference.fellOff);
     result.poses.forEach((pose, body) => pose.forEach((value, component) => {
       assert.ok(Math.abs(value - reference.poses[body][component]) < 0.00001,
         `Body ${body}, component ${component} diverged across render schedules`);
