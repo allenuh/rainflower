@@ -1,8 +1,10 @@
 import { Box3, Group, Mesh, MeshPhongMaterial, Vector3 } from 'three';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import teapotUrl from '../assets/models/utah-teapot.obj?url';
+import { createTeapotColliders } from '../physics/teapot';
+import type { Physics } from '../physics/world';
 
-export async function createTeapot() {
+export async function createTeapot(physics: Physics) {
   const model = await new OBJLoader().loadAsync(teapotUrl);
   const material = new MeshPhongMaterial({
     color: 0xff8800,
@@ -34,5 +36,7 @@ export async function createTeapot() {
   teapot.add(model);
   teapot.position.set(-7, 0, -6);
   teapot.rotation.y = Math.PI / 6;
+  model.updateMatrix();
+  physics.addDynamicBody(teapot, createTeapotColliders(model.matrix));
   return teapot;
 }

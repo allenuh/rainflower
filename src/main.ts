@@ -46,9 +46,6 @@ const camera = new PerspectiveCamera(
 );
 camera.position.set(0, 5, 10);
 camera.lookAt(0, 0, 0);
-createTeapot()
-  .then((teapot) => scene.add(teapot))
-  .catch((error) => console.error('Unable to load the Utah teapot:', error));
 
 const renderer = new WebGLRenderer();
 renderer.shadowMap.enabled = true;
@@ -130,6 +127,9 @@ async function start() {
   const physics = await createPhysics();
   physics.addFloor(ground.geometry.parameters.width, ground.geometry.parameters.height);
   scene.add(createPrimitives(physics));
+  createTeapot(physics)
+    .then((teapot) => scene.add(teapot))
+    .catch((error) => console.error('Unable to load the Utah teapot:', error));
   const physicsDebug = createPhysicsDebug(physics.world);
   scene.add(physicsDebug.mesh);
 
