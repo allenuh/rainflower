@@ -21,6 +21,7 @@ import { createTeapot } from './world/teapot';
 import { createPhysics } from './physics/world';
 import { createPhysicsDebug } from './physics/debug';
 import { createPlayer, playerEyeHeight } from './player/controller';
+import { createPropInteraction } from './player/prop-interaction';
 
 const scene = new Scene();
 const sky = createSky();
@@ -123,6 +124,15 @@ async function start() {
   ));
   // Register the initial colliders in Rapier's query structures before movement casts.
   physics.update(physics.world.timestep);
+  const interaction = createPropInteraction(physics, player.body);
+  window.addEventListener('keydown', (event) => {
+    if (event.code !== 'KeyE' || !controls.isLocked || event.repeat) return;
+    event.preventDefault();
+    interaction.pressE(camera);
+  });
+  renderer.domElement.addEventListener('mousedown', (event) => {
+    if (event.button === 0 && controls.isLocked) interaction.throwHeld(camera);
+  });
   createTeapot(physics)
     .then((teapot) => scene.add(teapot))
     .catch((error) => console.error('Unable to load the Utah teapot:', error));
@@ -153,9 +163,9 @@ async function start() {
     physics.update(deltaSeconds, (stepSeconds) => {
       player.update(stepSeconds, movementVelocity);
     });
-    physics.syncMeshes();
-
     player.copyCameraPosition(camera.position, physics.interpolationAlpha);
+    interaction.update(camera);
+    physics.syncMeshes();
     sky.position.copy(camera.position);
     physicsDebug.update();
     renderer.render(scene, camera);

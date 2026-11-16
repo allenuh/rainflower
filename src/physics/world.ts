@@ -38,7 +38,7 @@ export async function createPhysics() {
   function respawnFallenProp() {
     respawnCooldown = Math.max(0, respawnCooldown - fixedTimeStep);
     if (respawnCooldown > 0) return;
-    const object = objects.find(({ body }) => body.translation().y < respawnBelowY);
+    const object = objects.find(({ body }) => body.isDynamic() && body.translation().y < respawnBelowY);
     if (!object) return;
 
     object.body.setTranslation(respawnPosition, true);
@@ -58,6 +58,18 @@ export async function createPhysics() {
 
     get interpolationAlpha() {
       return accumulator / fixedTimeStep;
+    },
+
+    findProp(handle: number) {
+      const object = objects.find(({ body }) => body.handle === handle);
+      return object ? { mesh: object.mesh, body: object.body } : undefined;
+    },
+
+    resetPropInterpolation(handle: number) {
+      const object = objects.find(({ body }) => body.handle === handle);
+      if (!object) return;
+      object.previousPosition.copy(object.body.translation());
+      object.previousRotation.copy(object.body.rotation());
     },
 
     addFloor(width: number, depth: number) {
