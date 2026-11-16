@@ -20,6 +20,7 @@ import { createPrimitives } from './world/primitives';
 import { createTeapot } from './world/teapot';
 import { createPhysics } from './physics/world';
 import { createPhysicsDebug } from './physics/debug';
+import { createPlayer, playerEyeHeight } from './player/controller';
 
 const scene = new Scene();
 const sky = createSky();
@@ -64,12 +65,7 @@ const maxDeltaSeconds = 0.05;
 const movementKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD']);
 const pressedKeys = new Set<string>();
 
-const player = {
-  position: new Vector3(camera.position.x, 0, camera.position.z),
-  velocity: new Vector3(),
-  eyeHeight: camera.position.y,
-};
-
+const movementVelocity = new Vector3();
 const inputDirection = new Vector3();
 const forward = new Vector3();
 const right = new Vector3();
@@ -88,8 +84,7 @@ window.addEventListener('keyup', (event) => {
 
 function resetMovement() {
   pressedKeys.clear();
-  player.velocity.x = 0;
-  player.velocity.z = 0;
+  movementVelocity.set(0, 0, 0);
   lastTime = undefined;
 }
 
@@ -111,22 +106,23 @@ function updateMovementVelocity() {
   right.set(1, 0, 0).applyQuaternion(camera.quaternion);
   forward.crossVectors(camera.up, right).normalize();
 
-  // Leave vertical velocity independent for gravity.
-  player.velocity.x =
+  movementVelocity.x =
     (right.x * inputDirection.x - forward.x * inputDirection.z) * moveSpeed;
-  player.velocity.z =
+  movementVelocity.z =
     (right.z * inputDirection.x - forward.z * inputDirection.z) * moveSpeed;
-}
-
-function updatePlayer(deltaSeconds: number) {
-  // Future gravity and collision resolution belong here, before camera sync.
-  player.position.addScaledVector(player.velocity, deltaSeconds);
 }
 
 async function start() {
   const physics = await createPhysics();
   physics.addFloor(ground.geometry.parameters.width, ground.geometry.parameters.height);
   scene.add(createPrimitives(physics));
+  const player = createPlayer(physics.world, new Vector3(
+    camera.position.x,
+    camera.position.y - playerEyeHeight,
+    camera.position.z,
+  ));
+  // Register the initial colliders in Rapier's query structures before movement casts.
+  physics.update(physics.world.timestep);
   createTeapot(physics)
     .then((teapot) => scene.add(teapot))
     .catch((error) => console.error('Unable to load the Utah teapot:', error));
@@ -142,6 +138,7 @@ async function start() {
   document.addEventListener('visibilitychange', () => {
     resetMovement();
     physics.reset();
+    player.resetInterpolation();
   });
 
   renderer.setAnimationLoop((time: number) => {
@@ -152,13 +149,13 @@ async function start() {
       : Math.min((time - lastTime) / 1000, maxDeltaSeconds);
     lastTime = time;
 
-    physics.update(deltaSeconds);
-    physics.syncMeshes();
     updateMovementVelocity();
-    updatePlayer(deltaSeconds);
+    physics.update(deltaSeconds, (stepSeconds) => {
+      player.update(stepSeconds, movementVelocity);
+    });
+    physics.syncMeshes();
 
-    camera.position.copy(player.position);
-    camera.position.y += player.eyeHeight;
+    player.copyCameraPosition(camera.position, physics.interpolationAlpha);
     sky.position.copy(camera.position);
     physicsDebug.update();
     renderer.render(scene, camera);

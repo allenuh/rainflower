@@ -31,6 +31,10 @@ export async function createPhysics() {
   return {
     world,
 
+    get interpolationAlpha() {
+      return accumulator / fixedTimeStep;
+    },
+
     addFloor(width: number, depth: number) {
       // Its top is y = 0; the thickness extends below the visible floor.
       const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(0, -0.25, 0));
@@ -68,7 +72,7 @@ export async function createPhysics() {
       return body;
     },
 
-    update(deltaSeconds: number) {
+    update(deltaSeconds: number, beforeStep?: (deltaSeconds: number) => void) {
       if (!Number.isFinite(deltaSeconds) || deltaSeconds <= 0) return 0;
 
       // Discard excess elapsed time rather than building an unbounded backlog.
@@ -80,6 +84,7 @@ export async function createPhysics() {
       let steps = 0;
       while (accumulator + Number.EPSILON >= fixedTimeStep) {
         captureTransforms();
+        beforeStep?.(fixedTimeStep);
         world.step();
         accumulator = Math.max(0, accumulator - fixedTimeStep);
         steps++;
