@@ -1,44 +1,18 @@
 import './style.css';
 
 import {
-  Color,
-  Mesh,
   PCFShadowMap,
   PerspectiveCamera,
-  PlaneGeometry,
-  Scene,
-  ShaderMaterial,
   WebGLRenderer,
   Vector3,
 } from 'three';
 
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
-import groundVertexShader from './shaders/ground.vert.glsl?raw';
-import groundFragmentShader from './shaders/ground.frag.glsl?raw';
-import { createSky } from './world/sky';
-import { createPrimitives } from './world/primitives';
-import { createTeapot } from './world/teapot';
+import { createWorld2 } from './world/world-2';
 import { createPhysics } from './physics/world';
 import { createPhysicsDebug } from './physics/debug';
 import { createPlayer, playerEyeHeight } from './player/controller';
 import { createPropInteraction } from './player/prop-interaction';
-
-const scene = new Scene();
-const sky = createSky();
-scene.add(sky);
-
-const ground = new Mesh(
-  new PlaneGeometry(100, 100),
-  new ShaderMaterial({
-    vertexShader: groundVertexShader,
-    fragmentShader: groundFragmentShader,
-    uniforms: {
-      uColor: { value: new Color(0x808080) },
-    },
-  }),
-);
-ground.rotation.x = -Math.PI / 2;
-scene.add(ground);
 
 const camera = new PerspectiveCamera(
   75,
@@ -115,13 +89,12 @@ function updateMovementVelocity() {
 
 async function start() {
   const physics = await createPhysics();
-  physics.addFloor(ground.geometry.parameters.width, ground.geometry.parameters.height);
-  scene.add(createPrimitives(physics));
+  const { scene, stepHeight } = createWorld2(physics);
   const player = createPlayer(physics.world, new Vector3(
     camera.position.x,
     camera.position.y - playerEyeHeight,
     camera.position.z,
-  ));
+  ), { stepHeight: stepHeight + 0.1 });
   // Register the initial colliders in Rapier's query structures before movement casts.
   physics.update(physics.world.timestep);
   const interaction = createPropInteraction(physics, player.body);
@@ -133,9 +106,6 @@ async function start() {
   renderer.domElement.addEventListener('mousedown', (event) => {
     if (event.button === 0 && controls.isLocked) interaction.throwHeld(camera);
   });
-  createTeapot(physics)
-    .then((teapot) => scene.add(teapot))
-    .catch((error) => console.error('Unable to load the Utah teapot:', error));
   const physicsDebug = createPhysicsDebug(physics.world);
   scene.add(physicsDebug.mesh);
 
@@ -166,7 +136,6 @@ async function start() {
     player.copyCameraPosition(camera.position, physics.interpolationAlpha);
     interaction.update(camera);
     physics.syncMeshes();
-    sky.position.copy(camera.position);
     physicsDebug.update();
     renderer.render(scene, camera);
   });

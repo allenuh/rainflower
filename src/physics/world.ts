@@ -72,11 +72,11 @@ export async function createPhysics() {
       object.previousRotation.copy(object.body.rotation());
     },
 
-    addFloor(width: number, depth: number) {
-      // Its top is y = 0; the thickness extends below the visible floor.
-      const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(0, -0.25, 0));
+    addFloor(width: number, depth: number, surfaceY = 0, thickness = 0.5) {
+      // The thickness extends below the visible surface.
+      const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(0, surfaceY - thickness / 2, 0));
       world.createCollider(
-        RAPIER.ColliderDesc.cuboid(width / 2, 0.25, depth / 2)
+        RAPIER.ColliderDesc.cuboid(width / 2, thickness / 2, depth / 2)
           .setFriction(1)
           .setRestitution(0.05),
         body,

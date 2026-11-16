@@ -8,7 +8,11 @@ const contactOffset = 0.02;
 const playerMass = 80;
 const pushAcceleration = 12;
 
-export function createPlayer(world: RAPIER.World, spawnFeet: Vector3Like) {
+export function createPlayer(
+  world: RAPIER.World,
+  spawnFeet: Vector3Like,
+  options: { stepHeight?: number } = {},
+) {
   const centerHeight = capsuleHeight / 2;
   const eyeOffset = playerEyeHeight - centerHeight;
   const body = world.createRigidBody(
@@ -26,7 +30,11 @@ export function createPlayer(world: RAPIER.World, spawnFeet: Vector3Like) {
   controller.setMaxSlopeClimbAngle(Math.PI / 4);
   controller.setMinSlopeSlideAngle(Math.PI / 4);
   controller.enableSnapToGround(0.2);
-  controller.disableAutostep();
+  if (options.stepHeight !== undefined) {
+    controller.enableAutostep(options.stepHeight, 0.2, false);
+  } else {
+    controller.disableAutostep();
+  }
   // Apply our bounded impulses below instead of also applying automatic impulses.
   controller.setApplyImpulsesToDynamicBodies(false);
 
