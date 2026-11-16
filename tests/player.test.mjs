@@ -76,7 +76,7 @@ test('a wall blocks forward movement while allowing movement along its surface',
   }
 });
 
-test('dynamic props block the capsule before the pushing feature is enabled', async () => {
+test('walking into a dynamic prop pushes it without passing through it', async () => {
   const fixture = await createFixture();
   try {
     const body = fixture.physics.world.createRigidBody(
@@ -84,8 +84,9 @@ test('dynamic props block the capsule before the pushing feature is enabled', as
     );
     fixture.physics.world.createCollider(RAPIER.ColliderDesc.cuboid(1, 3, 2), body);
     fixture.advance(1, { x: 20, y: 0, z: 0 });
-    assert.ok(fixture.player.body.translation().x < 2.51);
-    assert.ok(Math.abs(body.translation().x - 4) < 0.02);
+    assert.ok(body.translation().x > 4.2, `Prop position: ${body.translation().x}`);
+    assert.ok(fixture.player.body.translation().x < body.translation().x - 1.45);
+    assert.ok(body.linvel().x < 4.1);
   } finally {
     fixture.dispose();
   }
@@ -153,4 +154,128 @@ test('camera position interpolates between capsule poses and resets cleanly', as
   } finally {
     fixture.dispose();
   }
+});
+
+test('light props gain bounded horizontal speed without an upward kick', async () => {
+  const fixture = await createFixture();
+  try {
+    const body = fixture.physics.world.createRigidBody(
+      RAPIER.RigidBodyDesc.dynamic().setTranslation(3, 0.5, 0).setCcdEnabled(true),
+    );
+    fixture.physics.world.createCollider(
+      RAPIER.ColliderDesc.ball(0.5).setMass(0.1).setFriction(0.6).setRestitution(0.05), body,
+    );
+    let maxSpeed = 0;
+    let maxHeight = 0;
+    for (let frame = 0; frame < 180; frame++) {
+      fixture.advance(1 / 60, { x: 20, y: 0, z: 0 });
+      const velocity = body.linvel();
+      maxSpeed = Math.max(maxSpeed, Math.hypot(velocity.x, velocity.z));
+      maxHeight = Math.max(maxHeight, body.translation().y);
+    }
+    assert.ok(body.translation().x > 5);
+    assert.ok(maxSpeed < 4.2, `Peak speed: ${maxSpeed}`);
+    assert.ok(maxHeight < 0.7, `Peak height: ${maxHeight}`);
+    assert.ok(Math.abs(body.angvel().z) > 0.1, 'The sphere should roll');
+  } finally {
+    fixture.dispose();
+  }
+});
+
+test('a compound prop shares one push budget instead of multiplying it per collider', async () => {
+  const fixture = await createFixture();
+  try {
+    fixture.physics.world.gravity.y = 0;
+    const body = fixture.physics.world.createRigidBody(
+      RAPIER.RigidBodyDesc.dynamic().setTranslation(1.1, 3, 0),
+    );
+    for (let index = 0; index < 16; index++) {
+      fixture.physics.world.createCollider(
+        RAPIER.ColliderDesc.cuboid(0.5, 0.2, 1)
+          .setTranslation(0, -2.8 + index * 0.36, 0).setMass(10), body,
+      );
+    }
+    fixture.physics.update(1 / 60);
+    fixture.player.update(1 / 60, { x: 20, y: 0, z: 0 });
+    const momentum = body.mass() * body.linvel().x;
+    assert.ok(momentum > 0);
+    assert.ok(momentum <= 16.001, `Push impulse: ${momentum}`);
+    assert.equal(body.linvel().y, 0);
+  } finally {
+    fixture.dispose();
+  }
+});
+
+test('pushing leaves a faster-moving prop free to keep its existing momentum', async () => {
+  const fixture = await createFixture();
+  try {
+    fixture.physics.world.gravity.y = 0;
+    const body = fixture.physics.world.createRigidBody(
+      RAPIER.RigidBodyDesc.dynamic().setTranslation(3, 3, 0),
+    );
+    fixture.physics.world.createCollider(RAPIER.ColliderDesc.ball(0.5), body);
+    body.setLinvel({ x: 8, y: 0, z: 0 }, true);
+    fixture.advance(1, { x: 20, y: 0, z: 0 });
+    assert.ok(Math.abs(body.linvel().x - 8) < 0.001);
+  } finally {
+    fixture.dispose();
+  }
+});
+
+test('standing still on a dynamic platform does not shove it sideways', async () => {
+  const fixture = await createFixture(new Vector3(0, 2, 0));
+  try {
+    const platform = fixture.physics.world.createRigidBody(
+      RAPIER.RigidBodyDesc.dynamic().setTranslation(0, 1, 0),
+    );
+    fixture.physics.world.createCollider(RAPIER.ColliderDesc.cuboid(3, 1, 3), platform);
+    fixture.physics.update(1 / 60);
+    fixture.advance(3);
+    assert.ok(fixture.player.grounded);
+    const position = platform.translation();
+    assert.ok(Math.hypot(position.x, position.z) < 0.01);
+  } finally {
+    fixture.dispose();
+  }
+});
+
+test('pushing remains consistent across render rates', async () => {
+  const positions = [];
+  for (const frameRate of [30, 60, 144, 240]) {
+    const fixture = await createFixture();
+    try {
+      const body = fixture.physics.world.createRigidBody(
+        RAPIER.RigidBodyDesc.dynamic().setTranslation(4, 3, 0),
+      );
+      fixture.physics.world.createCollider(
+        RAPIER.ColliderDesc.cuboid(1, 3, 2).setFriction(0.6), body,
+      );
+      fixture.advance(2, { x: 20, y: 0, z: 0 }, frameRate);
+      positions.push(new Vector3().copy(body.translation()));
+    } finally {
+      fixture.dispose();
+    }
+  }
+  for (const position of positions) assert.ok(position.distanceTo(positions[0]) < 0.00001);
+});
+
+test('heavier props resist the same player push more than lighter props', async () => {
+  const distances = [];
+  for (const mass of [48, 1000]) {
+    const fixture = await createFixture();
+    try {
+      const body = fixture.physics.world.createRigidBody(
+        RAPIER.RigidBodyDesc.dynamic().setTranslation(4, 3, 0),
+      );
+      fixture.physics.world.createCollider(
+        RAPIER.ColliderDesc.cuboid(1, 3, 2).setMass(mass).setFriction(0.6), body,
+      );
+      fixture.advance(2, { x: 20, y: 0, z: 0 });
+      distances.push(body.translation().x - 4);
+    } finally {
+      fixture.dispose();
+    }
+  }
+  assert.ok(distances[0] > 0.2);
+  assert.ok(distances[1] < distances[0] * 0.5);
 });

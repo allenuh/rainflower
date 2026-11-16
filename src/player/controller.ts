@@ -5,6 +5,9 @@ export const playerEyeHeight = 5;
 const capsuleHeight = 5.5;
 const capsuleRadius = 0.5;
 const contactOffset = 0.02;
+const playerMass = 80;
+const maxPushSpeed = 4;
+const pushAcceleration = 12;
 
 export function createPlayer(world: RAPIER.World, spawnFeet: Vector3Like) {
   const centerHeight = capsuleHeight / 2;
@@ -16,7 +19,7 @@ export function createPlayer(world: RAPIER.World, spawnFeet: Vector3Like) {
   );
   const collider = world.createCollider(
     // Rapier's half-height excludes the two rounded end caps.
-    RAPIER.ColliderDesc.capsule(centerHeight - capsuleRadius, capsuleRadius).setMass(80),
+    RAPIER.ColliderDesc.capsule(centerHeight - capsuleRadius, capsuleRadius).setMass(playerMass),
     body,
   );
   const controller = world.createCharacterController(contactOffset);
@@ -25,14 +28,61 @@ export function createPlayer(world: RAPIER.World, spawnFeet: Vector3Like) {
   controller.setMinSlopeSlideAngle(Math.PI / 4);
   controller.enableSnapToGround(0.2);
   controller.disableAutostep();
+  // Apply our bounded impulses below instead of also applying automatic impulses.
   controller.setApplyImpulsesToDynamicBodies(false);
 
   const previousPosition = new Vector3().copy(body.translation());
   const desiredMovement = new Vector3();
   const correctedMovement = new Vector3();
   const nextPosition = new Vector3();
+  const pushDirection = new Vector3();
+  const impulse = new Vector3();
+  const pushedBodies = new Set<number>();
   let verticalVelocity = 0;
   let grounded = false;
+
+  function pushObjects(deltaSeconds: number, horizontalVelocity: Vector3Like) {
+    pushedBodies.clear();
+    let remainingImpulse = playerMass * pushAcceleration * deltaSeconds;
+
+    for (let index = 0; index < controller.numComputedCollisions() && remainingImpulse > 0; index++) {
+      const collision = controller.computedCollision(index);
+      const obstacle = collision?.collider;
+      const object = obstacle?.parent();
+      if (!collision || !object?.isDynamic() || pushedBodies.has(object.handle)) continue;
+
+      // Ignore supporting surfaces and undersides; walking must not kick props upwards.
+      if (Math.abs(collision.normal1.y) > 0.7) continue;
+      pushDirection.set(-collision.normal1.x, 0, -collision.normal1.z).normalize();
+      const approachSpeed = horizontalVelocity.x * pushDirection.x
+        + horizontalVelocity.z * pushDirection.z;
+      if (approachSpeed <= 0) continue;
+
+      const velocity = object.linvel();
+      const horizontalSpeedSquared = velocity.x * velocity.x + velocity.z * velocity.z;
+      // Do not clamp or accelerate props already moving faster from other physics.
+      if (horizontalSpeedSquared >= maxPushSpeed * maxPushSpeed) continue;
+      const currentSpeed = velocity.x * pushDirection.x + velocity.z * pushDirection.z;
+      // Bound the full horizontal speed, including motion sideways to this contact.
+      const allowedIncrease = Math.sqrt(Math.max(
+        0,
+        currentSpeed * currentSpeed + maxPushSpeed * maxPushSpeed - horizontalSpeedSquared,
+      )) - currentSpeed;
+      const speedIncrease = Math.min(
+        Math.min(approachSpeed, maxPushSpeed) - currentSpeed,
+        allowedIncrease,
+      );
+      if (speedIncrease <= 0) continue;
+
+      const magnitude = Math.min(object.mass() * speedIncrease, remainingImpulse);
+      if (magnitude <= 0) continue;
+
+      // Center-of-mass impulses avoid abrupt spin. Floor friction still produces rolling.
+      object.applyImpulse(impulse.copy(pushDirection).multiplyScalar(magnitude), true);
+      remainingImpulse -= magnitude;
+      pushedBodies.add(object.handle);
+    }
+  }
 
   return {
     body,
@@ -63,6 +113,7 @@ export function createPlayer(world: RAPIER.World, spawnFeet: Vector3Like) {
       controller.computedMovement(correctedMovement);
       grounded = controller.computedGrounded();
       if (grounded && verticalVelocity < 0) verticalVelocity = 0;
+      pushObjects(deltaSeconds, horizontalVelocity);
 
       nextPosition.copy(body.translation()).add(correctedMovement);
       body.setNextKinematicTranslation(nextPosition);

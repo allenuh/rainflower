@@ -6,6 +6,7 @@ import { Box3, Group, Matrix4, Mesh, SphereGeometry, Vector3 } from 'three';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { createPhysics } from '../src/physics/world.ts';
 import { createTeapotColliders } from '../src/physics/teapot.ts';
+import { createPlayer } from '../src/player/controller.ts';
 
 function createModelFixture() {
   const modelUrl = new URL('../src/assets/models/utah-teapot.obj', import.meta.url);
@@ -87,6 +88,34 @@ test('a moving sphere transfers momentum to the teapot', async () => {
     assert.ok(teapot.position.x > 0.05, `Teapot displacement: ${teapot.position.x}`);
     assert.ok(body.linvel().x > 0.05);
   } finally {
+    physics.dispose();
+  }
+});
+
+test('the player pushes the teapot without launching its compound body', async () => {
+  const physics = await createPhysics();
+  let player;
+  try {
+    physics.addFloor(100, 100);
+    const { model, teapot } = createModelFixture();
+    teapot.position.x = 6;
+    const body = physics.addDynamicBody(teapot, createTeapotColliders(model.matrix));
+    player = createPlayer(physics.world, new Vector3());
+    physics.update(physics.world.timestep);
+    let maxSpeed = 0;
+    let maxUpwardVelocity = 0;
+    for (let step = 0; step < 120; step++) {
+      physics.update(1 / 60, (delta) => player.update(delta, { x: 20, y: 0, z: 0 }));
+      const velocity = body.linvel();
+      maxSpeed = Math.max(maxSpeed, Math.hypot(velocity.x, velocity.z));
+      maxUpwardVelocity = Math.max(maxUpwardVelocity, velocity.y);
+    }
+    assert.ok(body.translation().x > 6.1);
+    assert.ok(maxSpeed < 4.2, `Peak horizontal speed: ${maxSpeed}`);
+    // Permit small floor-contact bumps, but no launch (1 unit/s rises about 0.05 units).
+    assert.ok(maxUpwardVelocity < 1, `Peak upward velocity: ${maxUpwardVelocity}`);
+  } finally {
+    player?.dispose();
     physics.dispose();
   }
 });
