@@ -86,7 +86,7 @@ test('walking into a dynamic prop pushes it without passing through it', async (
     fixture.advance(1, { x: 20, y: 0, z: 0 });
     assert.ok(body.translation().x > 4.2, `Prop position: ${body.translation().x}`);
     assert.ok(fixture.player.body.translation().x < body.translation().x - 1.45);
-    assert.ok(body.linvel().x < 4.1);
+    assert.ok(body.linvel().x < 20.5);
   } finally {
     fixture.dispose();
   }
@@ -156,7 +156,7 @@ test('camera position interpolates between capsule poses and resets cleanly', as
   }
 });
 
-test('light props gain bounded horizontal speed without an upward kick', async () => {
+test('light props can approach walking speed without an upward kick', async () => {
   const fixture = await createFixture();
   try {
     const body = fixture.physics.world.createRigidBody(
@@ -174,7 +174,8 @@ test('light props gain bounded horizontal speed without an upward kick', async (
       maxHeight = Math.max(maxHeight, body.translation().y);
     }
     assert.ok(body.translation().x > 5);
-    assert.ok(maxSpeed < 4.2, `Peak speed: ${maxSpeed}`);
+    assert.ok(maxSpeed > 4, 'The former push-speed cap should not apply');
+    assert.ok(maxSpeed < 20.5, `Peak speed: ${maxSpeed}`);
     assert.ok(maxHeight < 0.7, `Peak height: ${maxHeight}`);
     assert.ok(Math.abs(body.angvel().z) > 0.1, 'The sphere should roll');
   } finally {
@@ -214,9 +215,9 @@ test('pushing leaves a faster-moving prop free to keep its existing momentum', a
       RAPIER.RigidBodyDesc.dynamic().setTranslation(3, 3, 0),
     );
     fixture.physics.world.createCollider(RAPIER.ColliderDesc.ball(0.5), body);
-    body.setLinvel({ x: 8, y: 0, z: 0 }, true);
+    body.setLinvel({ x: 24, y: 0, z: 0 }, true);
     fixture.advance(1, { x: 20, y: 0, z: 0 });
-    assert.ok(Math.abs(body.linvel().x - 8) < 0.001);
+    assert.ok(Math.abs(body.linvel().x - 24) < 0.001);
   } finally {
     fixture.dispose();
   }

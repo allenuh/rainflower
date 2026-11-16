@@ -3,6 +3,8 @@ import { Quaternion, Vector3, type Object3D } from 'three';
 
 const fixedTimeStep = 1 / 60;
 const maxStepsPerFrame = 5;
+const propDensity = 0.05;
+const propGravityScale = 2;
 const respawnBelowY = -100;
 const respawnPosition = { x: 0, y: 40, z: 0 };
 const respawnInterval = 1.5;
@@ -63,7 +65,7 @@ export async function createPhysics() {
       const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(0, -0.25, 0));
       world.createCollider(
         RAPIER.ColliderDesc.cuboid(width / 2, 0.25, depth / 2)
-          .setFriction(0.7)
+          .setFriction(1)
           .setRestitution(0.05),
         body,
       );
@@ -77,15 +79,15 @@ export async function createPhysics() {
         RAPIER.RigidBodyDesc.dynamic()
           .setTranslation(position.x, position.y, position.z)
           .setRotation(rotation)
-
-          .setLinearDamping(0.05)
-          .setAngularDamping(0.1)
+          .setGravityScale(propGravityScale)
+          .setLinearDamping(0.6)
+          .setAngularDamping(0.5)
           .setCcdEnabled(true),
       );
 
       // Collider dimensions are local to the body; callers account for mesh scale.
       for (const collider of colliders) {
-        world.createCollider(collider.setDensity(1).setFriction(0.6).setRestitution(0.08), body);
+        world.createCollider(collider.setDensity(propDensity).setFriction(1.9).setRestitution(0.08), body);
       }
       objects.push({
         mesh,

@@ -6,7 +6,6 @@ const capsuleHeight = 5.5;
 const capsuleRadius = 0.5;
 const contactOffset = 0.02;
 const playerMass = 80;
-const maxPushSpeed = 4;
 const pushAcceleration = 12;
 
 export function createPlayer(world: RAPIER.World, spawnFeet: Vector3Like) {
@@ -59,19 +58,8 @@ export function createPlayer(world: RAPIER.World, spawnFeet: Vector3Like) {
       if (approachSpeed <= 0) continue;
 
       const velocity = object.linvel();
-      const horizontalSpeedSquared = velocity.x * velocity.x + velocity.z * velocity.z;
-      // Do not clamp or accelerate props already moving faster from other physics.
-      if (horizontalSpeedSquared >= maxPushSpeed * maxPushSpeed) continue;
       const currentSpeed = velocity.x * pushDirection.x + velocity.z * pushDirection.z;
-      // Bound the full horizontal speed, including motion sideways to this contact.
-      const allowedIncrease = Math.sqrt(Math.max(
-        0,
-        currentSpeed * currentSpeed + maxPushSpeed * maxPushSpeed - horizontalSpeedSquared,
-      )) - currentSpeed;
-      const speedIncrease = Math.min(
-        Math.min(approachSpeed, maxPushSpeed) - currentSpeed,
-        allowedIncrease,
-      );
+      const speedIncrease = approachSpeed - currentSpeed;
       if (speedIncrease <= 0) continue;
 
       const magnitude = Math.min(object.mass() * speedIncrease, remainingImpulse);
