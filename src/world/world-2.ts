@@ -1,5 +1,6 @@
 import { Color, HemisphereLight, Mesh, MeshPhongMaterial, PlaneGeometry, Scene } from 'three';
 import type { Physics } from '../physics/world';
+import { createCheckerboardMarbleMaterial } from './marble';
 
 export function createWorld2(physics: Physics) {
   const scene = new Scene();
@@ -13,9 +14,20 @@ export function createWorld2(physics: Physics) {
   const lowerY = -2.5;
   const stepHeight = upperY - lowerY;
   const wallCenterY = (upperY + lowerY) / 2;
-  const material = new MeshPhongMaterial({ color: 0x808080 });
+  const floorMaterial = createCheckerboardMarbleMaterial({
+    tileSize: 10, // World units per square; larger values make larger tiles.
+    whiteScale: 0.06, // Larger values make the marble details smaller.
+    redScale: 0.18,
+    sideTopY: upperY,
+  });
 
-  function addFloor(width: number, depth: number, surfaceY: number, thickness?: number) {
+  function addFloor(
+    width: number,
+    depth: number,
+    surfaceY: number,
+    material: MeshPhongMaterial,
+    thickness?: number,
+  ) {
     const floor = new Mesh(new PlaneGeometry(width, depth), material);
     floor.rotation.x = -Math.PI / 2;
     floor.position.y = surfaceY;
@@ -23,17 +35,17 @@ export function createWorld2(physics: Physics) {
     physics.addFloor(width, depth, surfaceY, thickness);
   }
 
-  addFloor(upperWidth, upperDepth, upperY, stepHeight);
-  addFloor(lowerSize, lowerSize, lowerY);
+  addFloor(upperWidth, upperDepth, upperY, floorMaterial, stepHeight);
+  addFloor(lowerSize, lowerSize, lowerY, new MeshPhongMaterial({ color: 0x808080 }));
 
   // Plane normals face outward; each wall joins the two floor elevations.
   for (const sign of [-1, 1]) {
-    const endWall = new Mesh(new PlaneGeometry(upperWidth, stepHeight), material);
+    const endWall = new Mesh(new PlaneGeometry(upperWidth, stepHeight), floorMaterial);
     endWall.position.set(0, wallCenterY, sign * upperDepth / 2);
     endWall.rotation.y = sign === 1 ? 0 : Math.PI;
     scene.add(endWall);
 
-    const sideWall = new Mesh(new PlaneGeometry(upperDepth, stepHeight), material);
+    const sideWall = new Mesh(new PlaneGeometry(upperDepth, stepHeight), floorMaterial);
     sideWall.position.set(sign * upperWidth / 2, wallCenterY, 0);
     sideWall.rotation.y = sign * Math.PI / 2;
     scene.add(sideWall);
