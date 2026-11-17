@@ -52,7 +52,7 @@ function createStoneMaterial(
   const material = new MeshPhongMaterial({
     color: 0xffffff,
     specular: 0xffffff,
-    shininess: 80,
+    shininess: 40,
   });
   const varyings = `varying vec2 vMarblePosition;
     varying float vMarbleHeight;

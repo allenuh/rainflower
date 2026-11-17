@@ -1,11 +1,13 @@
-import { Color, HemisphereLight, Mesh, MeshPhongMaterial, PlaneGeometry, Scene } from 'three';
+import { Color, Mesh, MeshPhongMaterial, PlaneGeometry, Scene } from 'three';
 import type { Physics } from '../physics/world';
 import { createCheckerboardMarbleMaterial } from './marble';
+import { createSunsetSky } from './sunset';
 
 export function createWorld2(physics: Physics) {
   const scene = new Scene();
-  scene.background = new Color(0x000000);
-  scene.add(new HemisphereLight(0xffffff, 0x444444, 2));
+  scene.background = new Color('#4a2c1c');
+  const { sky, sunLight, fillLight } = createSunsetSky();
+  scene.add(sky, sunLight, sunLight.target, fillLight);
 
   const upperWidth = 200;
   const upperDepth = 100;
