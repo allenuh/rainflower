@@ -11,7 +11,7 @@ import {
   type WebGLRenderer,
 } from 'three';
 import type { Environment } from '../world/environments';
-import { updatePortalCamera, type PortalEndpoint, type PortalPair } from './portal';
+import { clipPortalCamera, updatePortalCamera, type PortalEndpoint, type PortalPair } from './portal';
 
 function createView(source: PortalEndpoint, destination: PortalEndpoint) {
   const target = new WebGLRenderTarget(1, 1, { type: HalfFloatType });
@@ -70,6 +70,7 @@ export function createPortalRenderer(renderer: WebGLRenderer, pair: PortalPair) 
           view.target.setSize(size.x, size.y);
         }
         updatePortalCamera(view.source, view.destination, viewer, view.camera);
+        if (!clipPortalCamera(view.destination, view.camera)) continue;
         view.destination.environment.update(deltaSeconds);
 
         const previousTarget = renderer.getRenderTarget();

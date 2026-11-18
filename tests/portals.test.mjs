@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { Euler, Group, Matrix4, PerspectiveCamera, Quaternion, Scene, Vector3 } from 'three';
-import { createPortalEndpoint, getPortalTransform, updatePortalCamera } from '../src/portals/portal.ts';
+import { Euler, Group, Matrix4, PerspectiveCamera, Quaternion, Scene, Vector3, Vector4 } from 'three';
+import { clipPortalCamera, createPortalEndpoint, getPortalTransform, updatePortalCamera } from '../src/portals/portal.ts';
 
 const tolerance = 1e-9;
 
@@ -184,4 +184,117 @@ test('portal cameras use a parented viewer world pose without modifying the view
   const expected = getPortalTransform(source, destination, new Matrix4()).multiply(originalPose);
   assertMatrix(portalCamera.matrixWorld, expected);
   assertMatrix(viewer.matrixWorld, originalPose);
+});
+
+// WebGL clips a point against the near plane when clip-space z + w is negative.
+function nearPlaneDistance(point, camera) {
+  const clip = new Vector4(point.x, point.y, point.z, 1)
+    .applyMatrix4(camera.matrixWorldInverse).applyMatrix4(camera.projectionMatrix);
+  return clip.z + clip.w;
+}
+
+test('exit clipping rejects geometry between the virtual eye and exit in both directions', () => {
+  const a = endpoint([0, 4, -12]);
+  const b = endpoint([0, 4, 0], Math.PI);
+  for (const [source, destination] of [[a, b], [b, a]]) {
+    const viewer = new PerspectiveCamera(75, 16 / 9, 0.1, 1000);
+    source.anchor.updateWorldMatrix(true, false);
+    source.anchor.matrixWorld.decompose(viewer.position, viewer.quaternion, viewer.scale);
+    viewer.translateZ(10);
+    const camera = new PerspectiveCamera();
+    updatePortalCamera(source, destination, viewer, camera);
+    const between = destination.anchor.localToWorld(new Vector3(0, 0, -2));
+    assert.ok(nearPlaneDistance(between, camera) > 0, 'Unclipped camera sees the obstruction');
+    assert.equal(clipPortalCamera(destination, camera), true);
+    assert.ok(nearPlaneDistance(between, camera) < 0);
+    assert.ok(nearPlaneDistance(destination.anchor.localToWorld(new Vector3(0, 0, 2)), camera) > 0);
+    assert.ok(nearPlaneDistance(destination.anchor.localToWorld(new Vector3(0, 0, 0)), camera) < 0);
+    assert.ok(nearPlaneDistance(destination.anchor.localToWorld(new Vector3(0, 0, 0.02)), camera) > 0);
+  }
+});
+
+test('the clipping boundary follows moved, rotated, and parented exit planes', () => {
+  const source = endpoint([2, 4, -3], 0.3);
+  const destination = endpoint([-7, 5, 8], -0.7);
+  const parent = new Group();
+  destination.environment.scene.add(parent);
+  parent.add(destination.anchor);
+  const viewer = new PerspectiveCamera(75, 1.5, 0.1, 1000);
+  source.anchor.updateWorldMatrix(true, false);
+  source.anchor.matrixWorld.decompose(viewer.position, viewer.quaternion, viewer.scale);
+  viewer.translateZ(8);
+  const camera = new PerspectiveCamera();
+
+  for (const yaw of [0.5, -1.2]) {
+    parent.position.set(6 * yaw, 2, -3);
+    parent.rotation.set(0.2, yaw, -0.15);
+    updatePortalCamera(source, destination, viewer, camera);
+    assert.equal(clipPortalCamera(destination, camera), true);
+    for (const [x, y] of [[-3, 2], [0, 0], [3, -2]]) {
+      const hidden = destination.anchor.localToWorld(new Vector3(x, y, -0.5));
+      const visible = destination.anchor.localToWorld(new Vector3(x, y, 0.5));
+      assert.ok(nearPlaneDistance(hidden, camera) < 0);
+      assert.ok(nearPlaneDistance(visible, camera) > 0);
+    }
+  }
+});
+
+test('oblique clipping preserves screen alignment and maintains an accurate inverse', () => {
+  const source = endpoint([3, 4, -8], 0.3);
+  const destination = endpoint([-10, 6, 20], -Math.PI / 3);
+  const viewer = new PerspectiveCamera(63, 16 / 9, 0.1, 1000);
+  viewer.position.set(5, 5, 12);
+  viewer.rotation.set(-0.25, -0.2, 0, 'YXZ');
+  viewer.zoom = 1.3;
+  viewer.filmOffset = 2;
+  viewer.setViewOffset(1920, 1080, 100, 20, 1280, 800);
+  const originalProjection = viewer.projectionMatrix.clone();
+  const camera = new PerspectiveCamera();
+
+  for (const aspect of [16 / 9, 0.75]) {
+    viewer.aspect = aspect;
+    viewer.updateProjectionMatrix();
+    updatePortalCamera(source, destination, viewer, camera);
+    const unclipped = camera.projectionMatrix.clone();
+    const point = destination.anchor.localToWorld(new Vector3(2, 1, 4));
+    const before = point.clone().project(camera);
+    assert.equal(clipPortalCamera(destination, camera), true);
+    const after = point.clone().project(camera);
+    assert.ok(Math.abs(before.x - after.x) < tolerance);
+    assert.ok(Math.abs(before.y - after.y) < tolerance);
+    for (const row of [0, 1, 3]) {
+      for (let column = 0; column < 4; column++) {
+        assert.equal(camera.projectionMatrix.elements[column * 4 + row], unclipped.elements[column * 4 + row]);
+      }
+    }
+    assertMatrix(camera.projectionMatrix.clone().multiply(camera.projectionMatrixInverse), new Matrix4());
+    const clipped = camera.projectionMatrix.clone();
+    updatePortalCamera(source, destination, viewer, camera);
+    assert.equal(clipPortalCamera(destination, camera), true);
+    assertMatrix(camera.projectionMatrix, clipped);
+  }
+  // Clipping only modifies the destination camera, never the player's lens.
+  viewer.aspect = 16 / 9;
+  viewer.updateProjectionMatrix();
+  assertMatrix(viewer.projectionMatrix, originalProjection);
+});
+
+test('exit clipping stays finite near the opening and skips views looking away', () => {
+  const source = endpoint();
+  const destination = endpoint([0, 0, 0], Math.PI);
+  const viewer = new PerspectiveCamera(75, 1.5, 0.1, 1000);
+  const camera = new PerspectiveCamera();
+  for (const distance of [0.00001, 0.05, 10]) {
+    viewer.position.set(0, 0, distance);
+    updatePortalCamera(source, destination, viewer, camera);
+    assert.equal(clipPortalCamera(destination, camera), true);
+    assert.ok(camera.projectionMatrix.elements.every(Number.isFinite));
+    assertMatrix(camera.projectionMatrix.clone().multiply(camera.projectionMatrixInverse), new Matrix4());
+  }
+
+  viewer.rotation.y = Math.PI;
+  updatePortalCamera(source, destination, viewer, camera);
+  const original = camera.projectionMatrix.clone();
+  assert.equal(clipPortalCamera(destination, camera), false);
+  assertMatrix(camera.projectionMatrix, original);
 });
