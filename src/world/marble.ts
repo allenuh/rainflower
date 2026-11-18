@@ -9,10 +9,11 @@ import {
   turbulence2DGLSL,
 } from '../shaders/utils';
 
-function whiteMarbleUniforms(scale: number) {
+function whiteMarbleUniforms(scale: number, sideTopY: number) {
   return {
     // Scale converts world units to pattern coordinates; frequency is in radians.
     uMarbleScale: { value: scale },
+    uMarbleSideTopY: { value: sideTopY },
     uMarbleFrequency: { value: 6 },
     uMarbleWarpStrength: { value: 2.5 },
     uMarbleWarpFrequency: { value: 0.6 },
@@ -21,8 +22,8 @@ function whiteMarbleUniforms(scale: number) {
     uMarbleColors: { value: [
       new Color('#f4f1e8'),
       new Color('#dedbd4'),
-      new Color('#8b8e97'),
-      new Color('#252936'),
+      new Color('#d0d0ce'),
+      new Color('#bcbdbf'),
     ] },
   };
 }
@@ -87,8 +88,8 @@ function createStoneMaterial(
 }
 
 // Larger scale values make the marble's features smaller and more frequent.
-export function createMarbleMaterial({ scale = 0.06 } = {}) {
-  return createStoneMaterial(marbleSource, whiteMarbleUniforms(scale), 'marbleColor');
+export function createMarbleMaterial({ scale = 0.06, sideTopY = 0 } = {}) {
+  return createStoneMaterial(marbleSource, whiteMarbleUniforms(scale, sideTopY), 'marbleSurfaceColor');
 }
 
 export function createRedMarbleMaterial({ scale = 0.18 } = {}) {
@@ -104,10 +105,9 @@ export function createCheckerboardMarbleMaterial({
   return createStoneMaterial(
     [marbleSource, redMarbleSource, checkerboardSource].join('\n'),
     {
-      ...whiteMarbleUniforms(whiteScale),
+      ...whiteMarbleUniforms(whiteScale, sideTopY),
       ...redMarbleUniforms(redScale),
       uMarbleTileSize: { value: tileSize },
-      uMarbleSideTopY: { value: sideTopY },
     },
     'checkerboardMarbleColor',
   );

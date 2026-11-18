@@ -9,6 +9,7 @@ uniform vec3 uSunDirection;
 uniform vec3 uSunColor;
 uniform float uSunRadius;
 uniform float uSunGlintRadius;
+uniform float uSunGlintWidth;
 uniform float uSunGlintIntensity;
 uniform vec2 uSunPathCosines;
 uniform float uOpacity;
@@ -58,20 +59,24 @@ void main() {
 
   vec3 eyeToWater = normalize(vWaterWorldPosition - cameraPosition);
   vec3 reflectedRay = reflect(eyeToWater, worldNormal);
-  // Compare chord lengths on the unit sphere to avoid acos near the sun's center.
-  float sunDistance = length(reflectedRay - uSunDirection);
+  vec2 sunHeading = normalize(uSunDirection.xz);
+  vec2 acrossSun = vec2(-sunHeading.y, sunHeading.x);
+  // Widen the glint across the sun's bearing without broadening it vertically.
+  vec3 sunDelta = reflectedRay - uSunDirection;
+  sunDelta.xz -= acrossSun * dot(sunDelta.xz, acrossSun) * (1.0 - 1.0 / uSunGlintWidth);
+  float sunDistance = length(sunDelta);
   float diskEdge = 2.0 * sin(uSunRadius * 0.5);
   float glintEdge = 2.0 * sin(max(uSunGlintRadius, uSunRadius + 0.0001) * 0.5);
   float glintFootprint = 0.5 * fwidth(sunDistance);
   float glint = 1.0 - smoothstep(diskEdge - glintFootprint, glintEdge + glintFootprint, sunDistance);
   vec2 waterBearing = eyeToWater.xz / max(length(eyeToWater.xz), 0.0001);
-  float sunBearing = dot(waterBearing, normalize(uSunDirection.xz));
+  float sunBearing = dot(waterBearing, sunHeading);
   float pathWeight = smoothstep(uSunPathCosines.x, uSunPathCosines.y, sunBearing);
   vec3 highlights = uSunColor * (uSunGlintIntensity * glint * pathWeight);
 
   float fresnel = fresnelSchlick(dot(normal, viewDirection), 0.02);
   // An artistic reflection floor retains the glossy offline-render appearance.
-  float reflectionWeight = mix(uReflectionStrength, 0.1, fresnel);
+  float reflectionWeight = mix(uReflectionStrength, 0.05, fresnel);
   vec3 bodyColor = color * (vec3(0.2) + irradiance * 0.31830988618);
   gl_FragColor = vec4(mix(bodyColor, reflection, reflectionWeight) + highlights, uOpacity);
   #include <tonemapping_fragment>

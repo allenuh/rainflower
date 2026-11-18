@@ -46,14 +46,15 @@ export function createWater(
           uSunColor: { value: sun.color },
           uSunRadius: { value: sun.radius },
           uSunGlintRadius: { value: MathUtils.degToRad(2.5) },
+          uSunGlintWidth: { value: 1.75 }, // Horizontal spread multiplier.
           uSunGlintIntensity: { value: 2 },
-          // The path starts fading 3 degrees from the sun's bearing and ends at 12.
+          // The path starts fading 5 degrees from the sun's bearing and ends at 20.
           uSunPathCosines: { value: new Vector2(
-            Math.cos(MathUtils.degToRad(12)),
-            Math.cos(MathUtils.degToRad(3)),
+            Math.cos(MathUtils.degToRad(20)),
+            Math.cos(MathUtils.degToRad(5)),
           ) },
           uReflectionTexelSize: { value: new Vector2(1 / reflectionWidth, 1 / reflectionHeight) },
-          uOpacity: { value: 0.55 }, // 0 = invisible, 1 = fully opaque.
+          uOpacity: { value: 0.85 }, // 0 = invisible, 1 = fully opaque.
         },
       ]),
       vertexShader,

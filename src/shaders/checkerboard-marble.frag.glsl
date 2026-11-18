@@ -1,5 +1,4 @@
 uniform float uMarbleTileSize;
-uniform float uMarbleSideTopY;
 
 // Integral of an alternating +1/-1 square wave along each coordinate.
 vec2 marbleCheckerIntegral(vec2 point) {
@@ -26,8 +25,7 @@ vec3 checkerboardMarbleColor(vec2 worldPosition) {
 
   // Unfold the stone over the edge so its grain continues down the vertical
   // face. Tile selection above stays tied to the square on the top surface.
-  vec2 stonePosition = worldPosition + vMarbleSideDirection
-    * max(uMarbleSideTopY - vMarbleHeight, 0.0);
+  vec2 stonePosition = marbleStonePosition(worldPosition);
 
   // Evaluate both in uniform control flow: each marble shader uses derivatives.
   vec3 white = marbleColor(stonePosition);

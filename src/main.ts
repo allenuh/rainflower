@@ -89,7 +89,7 @@ function updateMovementVelocity() {
 
 async function start() {
   const physics = await createPhysics();
-  const { scene, stepHeight, updateWater } = createWorld2(physics, renderer);
+  const { scene, stepHeight, updateWater } = createWorld2(physics);
   const player = createPlayer(physics.world, new Vector3(
     camera.position.x,
     camera.position.y - playerEyeHeight,

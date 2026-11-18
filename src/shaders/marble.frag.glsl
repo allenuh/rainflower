@@ -1,4 +1,5 @@
 uniform float uMarbleScale;
+uniform float uMarbleSideTopY;
 uniform float uMarbleFrequency;
 uniform float uMarbleWarpStrength;
 uniform float uMarbleWarpFrequency;
@@ -17,4 +18,13 @@ vec3 marbleColor(vec2 worldPosition) {
   // Filter the unwrapped phase before mapping its bands through the color ramp.
   float bands = 0.5 + 0.5 * filteredSin(phase);
   return colorRamp(bands, uMarbleStops, uMarbleColors);
+}
+
+// Unfold the surface at each edge so the grain continues down the walls.
+vec2 marbleStonePosition(vec2 worldPosition) {
+  return worldPosition + vMarbleSideDirection * max(uMarbleSideTopY - vMarbleHeight, 0.0);
+}
+
+vec3 marbleSurfaceColor(vec2 worldPosition) {
+  return marbleColor(marbleStonePosition(worldPosition));
 }
