@@ -19,8 +19,8 @@ import { createSunsetSky } from './sunset';
 export function createWorld2(physics: Physics, renderer: WebGLRenderer) {
   const scene = new Scene();
   scene.background = new Color('#4a2c1c');
-  const { sky, sunLight, fillLight } = createSunsetSky();
-  scene.add(sky, sunLight, sunLight.target, fillLight);
+  const { sky, spotLight, fillLight } = createSunsetSky();
+  scene.add(sky, spotLight, spotLight.target, fillLight);
 
   const upperWidth = 200;
   const upperDepth = 100;
@@ -70,7 +70,7 @@ export function createWorld2(physics: Physics, renderer: WebGLRenderer) {
     scene.add(sideWall);
   }
 
-  return { scene, stepHeight };
+  return { scene, stepHeight, spotLight };
 }
 
 function captureSkyEnvironment(renderer: WebGLRenderer, sky: Mesh) {

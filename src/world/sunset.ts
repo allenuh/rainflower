@@ -1,11 +1,11 @@
 import {
   BackSide,
   Color,
-  DirectionalLight,
   HemisphereLight,
   Mesh,
   ShaderMaterial,
   SphereGeometry,
+  SpotLight,
 } from 'three';
 import vertexShader from '../shaders/sunset.vert.glsl?raw';
 import fragmentShader from '../shaders/sunset.frag.glsl?raw';
@@ -39,9 +39,13 @@ export function createSunsetSky() {
   sky.renderOrder = -1;
   sky.frustumCulled = false;
 
-  const sunLight = new DirectionalLight('#ffd29a', 2.4);
-  sunLight.position.set(0, 0.2, -1).normalize().multiplyScalar(100);
+  // Intensity compensates for inverse-square falloff over these world distances.
+  const spotLight = new SpotLight('#ffd29a', 190000);
+  spotLight.position.set(0, 60, -280);
+  spotLight.target.position.set(0, 0, 380);
+  spotLight.angle = Math.PI / 6; // Cone half-angle; increase for wider coverage.
+  spotLight.penumbra = 0.6; // Soft transition around the edge of the cone.
   const fillLight = new HemisphereLight('#eeb76a', '#45332b', 1.3);
 
-  return { sky, sunLight, fillLight };
+  return { sky, spotLight, fillLight };
 }

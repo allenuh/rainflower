@@ -1,4 +1,4 @@
-import { Color, MeshBasicMaterial, MultiplyOperation, ShaderChunk, Vector4, type IUniform } from 'three';
+import { Color, MeshPhongMaterial, MultiplyOperation, Vector4, type IUniform } from 'three';
 import marbleSource from '../shaders/marble.frag.glsl?raw';
 import redMarbleSource from '../shaders/red-marble.frag.glsl?raw';
 import checkerboardSource from '../shaders/checkerboard-marble.frag.glsl?raw';
@@ -49,8 +49,10 @@ function createStoneMaterial(
   uniforms: Record<string, IUniform>,
   colorFunction: string,
 ) {
-  const material = new MeshBasicMaterial({
+  const material = new MeshPhongMaterial({
     color: 0xffffff,
+    specular: 0x555555,
+    shininess: 40,
     reflectivity: 0.25,
     combine: MultiplyOperation, // Keep the marble colors in the sky reflection.
   });
@@ -66,7 +68,7 @@ function createStoneMaterial(
     source,
   ].join('\n');
 
-  // Replace only the base color, preserving Three.js environment mapping/output.
+  // Preserve Phong lighting and sky reflections around the procedural base color.
   material.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
     shader.vertexShader = `${varyings}\n${shader.vertexShader}`
@@ -74,18 +76,12 @@ function createStoneMaterial(
         vec3 marbleWorldPosition = (modelMatrix * vec4(transformed, 1.0)).xyz;
         vMarblePosition = marbleWorldPosition.xz;
         vMarbleHeight = marbleWorldPosition.y;
-        vMarbleSideDirection = transformNormalByInverseViewMatrix(normalMatrix * normal, viewMatrix).xz;`)
-      // An unnormalized view ray interpolates correctly across large flat faces.
-      // The cubemap lookup supplies the normalization when it samples the sky.
-      .replace('#include <envmap_vertex>', ShaderChunk.envmap_vertex.replace(
-        'normalize( worldPosition.xyz - cameraPosition )',
-        '( worldPosition.xyz - cameraPosition )',
-      ));
+        vMarbleSideDirection = transformNormalByInverseViewMatrix(normalMatrix * normal, viewMatrix).xz;`);
     shader.fragmentShader = `${fragmentSource}\n${shader.fragmentShader}`
       .replace('#include <color_fragment>', `#include <color_fragment>
         diffuseColor.rgb *= ${colorFunction}(vMarblePosition);`);
   };
-  material.customProgramCacheKey = () => `rainflower-${colorFunction}-basic-v1`;
+  material.customProgramCacheKey = () => `rainflower-${colorFunction}-phong-v1`;
 
   return material;
 }
