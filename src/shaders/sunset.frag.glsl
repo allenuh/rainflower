@@ -1,5 +1,7 @@
 uniform float uCloudScale;
 uniform float uCloudCoverage;
+uniform vec3 uSunDirection;
+uniform float uSunRadius;
 uniform vec3 uSkyColors[4];
 uniform vec3 uCloudColors[4];
 
@@ -32,12 +34,22 @@ void main() {
   float elevation = direction.y;
 
   vec3 skyColor = colorRamp(elevation, vec4(-0.12, 0.0, 0.3, 1.0), uSkyColors);
+  float sunAngle = length(direction - uSunDirection); // Chord distance on the unit sphere.
+  float sunEdge = max(fwidth(sunAngle) * 0.5, 0.0001);
+  float sunRadius = 2.0 * sin(uSunRadius * 0.5);
+  float sunDisk = 1.0 - smoothstep(sunRadius - sunEdge, sunRadius + sunEdge, sunAngle);
+  float sunGlow = exp(-sunAngle * 11.0);
+  // Fade the halo below the horizon so the distant water still blends with the fog.
+  skyColor += vec3(0.85, 0.28, 0.03) * sunGlow * smoothstep(0.0, uSunDirection.y, elevation);
+  skyColor = mix(skyColor, vec3(1.0, 0.91, 0.54) * 1.35, sunDisk);
 
   // Intersect the viewing direction with virtual horizontal cloud sheets.
   // A softened horizon projection avoids both a singularity and a visible
   // clamp boundary; distant cloud detail is then lost smoothly in the haze.
   vec2 projected = direction.xz / (max(elevation, 0.0) + 0.08) * uCloudScale;
-  vec2 point = mat2(0.94, -0.34, 0.34, 0.94) * projected * vec2(1.0, 0.65);
+  mat2 cloudRotation = mat2(0.94, -0.34, 0.34, 0.94);
+  vec2 cloudStretch = vec2(1.0, 0.65);
+  vec2 point = cloudRotation * projected * cloudStretch;
   vec2 warp = vec2(
     fbm2D(point * 0.35, 3, 2.0, 0.5),
     fbm2D(point * 0.35 + vec2(19.0, 47.0), 3, 2.0, 0.5)
@@ -52,14 +64,21 @@ void main() {
   float upperMask = smoothstep(0.36, 0.62, 0.5 + upper);
   cloudMask = 1.0 - (1.0 - cloudMask) * (1.0 - upperMask * 0.45);
 
-  // Density alone supplies the bright cloud edges and dark interiors.
-  float shadow = clamp((density - 0.35) * 2.2, 0.0, 1.0);
-  vec3 cloudColor = colorRamp(shadow, vec4(0.0, 0.3, 0.65, 1.0), uCloudColors);
-  cloudColor *= 0.8;
+  // Treat denser patches as thicker cloud bases that hang lower into the light.
+  // Compare with a sample toward the sun to pick out their illuminated sides.
+  vec2 sunOffset = cloudRotation * uSunDirection.xz * cloudStretch * 0.36;
+  float sunwardDensity = sunsetCloudNoise(cloudPoint + sunOffset, 5);
+  float litSlope = clamp(0.5 + (broad - sunwardDensity) * 2.0, 0.0, 1.0);
+  float towardSun = smoothstep(-0.55, 0.95, dot(direction, uSunDirection));
+  float cloudBase = smoothstep(0.28, 0.74, density);
+  float underlight = clamp(0.08 + cloudBase * 0.38 + litSlope * 0.3 + towardSun * 0.28, 0.0, 1.0);
+  vec3 cloudColor = colorRamp(underlight, vec4(0.0, 0.35, 0.67, 1.0), uCloudColors);
 
   float horizonHaze = exp(-max(elevation, 0.0) * 14.0);
   cloudColor = mix(cloudColor, skyColor, horizonHaze * 0.65);
-  cloudMask *= smoothstep(-0.015, 0.06, elevation);
+  // Keep the visible disk below the first cloud bank.
+  float cloudFloor = sin(asin(uSunDirection.y) + uSunRadius + 0.01);
+  cloudMask *= smoothstep(cloudFloor, cloudFloor + 0.065, elevation);
   vec3 color = mix(skyColor, cloudColor, cloudMask);
 
   gl_FragColor = vec4(color, 1.0);

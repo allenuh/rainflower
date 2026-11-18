@@ -5,6 +5,7 @@ export const playerEyeHeight = 5;
 const capsuleHeight = 5.5;
 const capsuleRadius = 0.5;
 const contactOffset = 0.02;
+const stalledFloorNudge = 0.05;
 const playerMass = 80;
 const pushAcceleration = 12;
 
@@ -47,6 +48,18 @@ export function createPlayer(
   const pushedBodies = new Set<number>();
   let verticalVelocity = 0;
   let grounded = false;
+  const normalNudge = controller.normalNudgeFactor();
+
+  function computeMovement() {
+    controller.computeColliderMovement(
+      collider,
+      desiredMovement,
+      RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
+      undefined,
+      (obstacle) => obstacle.handle !== collider.handle,
+    );
+    controller.computedMovement(correctedMovement);
+  }
 
   function pushObjects(deltaSeconds: number, horizontalVelocity: Vector3Like) {
     pushedBodies.clear();
@@ -99,14 +112,19 @@ export function createPlayer(
         horizontalVelocity.z * deltaSeconds,
       );
 
-      controller.computeColliderMovement(
-        collider,
-        desiredMovement,
-        RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
-        undefined,
-        (obstacle) => obstacle.handle !== collider.handle,
-      );
-      controller.computedMovement(correctedMovement);
+      computeMovement();
+      // A shallow cast against a large flat floor can stall on a support contact.
+      // Retry with more clearance only when that contact is the sole obstruction.
+      if (
+        Math.hypot(correctedMovement.x, correctedMovement.z)
+          < Math.hypot(desiredMovement.x, desiredMovement.z) * 0.5
+        && controller.numComputedCollisions() === 1
+        && (controller.computedCollision(0)?.normal1.y ?? 0) > 0.999
+      ) {
+        controller.setNormalNudgeFactor(stalledFloorNudge);
+        computeMovement();
+        controller.setNormalNudgeFactor(normalNudge);
+      }
       grounded = controller.computedGrounded();
       if (grounded && verticalVelocity < 0) verticalVelocity = 0;
       pushObjects(deltaSeconds, horizontalVelocity);

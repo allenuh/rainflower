@@ -9,7 +9,6 @@ import {
 
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { createWorld2 } from './world/world-2';
-import { createSpotlightYawTracker } from './world/spotlight-tracking';
 import { createPhysics } from './physics/world';
 import { createPhysicsDebug } from './physics/debug';
 import { createPlayer, playerEyeHeight } from './player/controller';
@@ -90,8 +89,7 @@ function updateMovementVelocity() {
 
 async function start() {
   const physics = await createPhysics();
-  const { scene, stepHeight, spotLight, updateWater } = createWorld2(physics, renderer);
-  const trackPlayerWithSpotlight = createSpotlightYawTracker(spotLight, camera.position);
+  const { scene, stepHeight, updateWater } = createWorld2(physics, renderer);
   const player = createPlayer(physics.world, new Vector3(
     camera.position.x,
     camera.position.y - playerEyeHeight,
@@ -136,7 +134,6 @@ async function start() {
       player.update(stepSeconds, movementVelocity);
     });
     player.copyCameraPosition(camera.position, physics.interpolationAlpha);
-    trackPlayerWithSpotlight(camera.position);
     updateWater(deltaSeconds);
     interaction.update(camera);
     physics.syncMeshes();

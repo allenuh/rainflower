@@ -1,18 +1,25 @@
 import {
   Color,
   Matrix4,
+  MathUtils,
   PlaneGeometry,
   ShaderMaterial,
   UniformsLib,
   UniformsUtils,
   Vector2,
+  type Vector3,
 } from 'three';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import vertexShader from '../shaders/water.vert.glsl?raw';
 import fragmentShader from '../shaders/water.frag.glsl?raw';
 import { fresnelGLSL, waves2DGLSL } from '../shaders/utils';
 
-export function createWater(width: number, depth: number, surfaceY: number) {
+export function createWater(
+  width: number,
+  depth: number,
+  surfaceY: number,
+  sun: { direction: Vector3; radius: number; color: Color },
+) {
   const reflectionWidth = 1024;
   const reflectionHeight = 1024;
   const mesh = new Reflector(new PlaneGeometry(width, depth), {
@@ -35,7 +42,16 @@ export function createWater(width: number, depth: number, surfaceY: number) {
           uRippleStrength: { value: 0.95 }, // Surface-normal steepness.
           uReflectionStrength: { value: 0 }, // Minimum reflection, stronger toward the horizon.
           uDistortion: { value: 0.14 }, // Reflection distortion from the ripples.
-          uShininess: { value: 1650 },
+          uSunDirection: { value: sun.direction },
+          uSunColor: { value: sun.color },
+          uSunRadius: { value: sun.radius },
+          uSunGlintRadius: { value: MathUtils.degToRad(2.5) },
+          uSunGlintIntensity: { value: 2 },
+          // The path starts fading 3 degrees from the sun's bearing and ends at 12.
+          uSunPathCosines: { value: new Vector2(
+            Math.cos(MathUtils.degToRad(12)),
+            Math.cos(MathUtils.degToRad(3)),
+          ) },
           uReflectionTexelSize: { value: new Vector2(1 / reflectionWidth, 1 / reflectionHeight) },
           uOpacity: { value: 0.55 }, // 0 = invisible, 1 = fully opaque.
         },

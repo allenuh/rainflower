@@ -1,23 +1,35 @@
 import {
   BackSide,
   Color,
+  DirectionalLight,
   HemisphereLight,
   Mesh,
   ShaderMaterial,
   SphereGeometry,
-  SpotLight,
+  MathUtils,
+  Vector3,
 } from 'three';
 import vertexShader from '../shaders/sunset.vert.glsl?raw';
 import fragmentShader from '../shaders/sunset.frag.glsl?raw';
 import { colorRampGLSL, fbm2DGLSL } from '../shaders/utils';
 
 export function createSunsetSky() {
+  const sunElevation = MathUtils.degToRad(2.5);
+  const sunAzimuth = MathUtils.degToRad(0); // Measured from -Z toward +X.
+  const sunDirection = new Vector3(
+    Math.sin(sunAzimuth) * Math.cos(sunElevation),
+    Math.sin(sunElevation),
+    -Math.cos(sunAzimuth) * Math.cos(sunElevation),
+  );
+  const sunRadius = MathUtils.degToRad(0.85);
   const material = new ShaderMaterial({
     vertexShader,
     fragmentShader: `${fbm2DGLSL}\n${colorRampGLSL}\n${fragmentShader}`,
     uniforms: {
       uCloudScale: { value: 2.25 },
       uCloudCoverage: { value: 0.75 },
+      uSunDirection: { value: sunDirection },
+      uSunRadius: { value: sunRadius },
       uSkyColors: { value: [
         new Color('#4a2c1c'),
         new Color('#dc790f'),
@@ -25,10 +37,10 @@ export function createSunsetSky() {
         new Color('#5c4726'),
       ] },
       uCloudColors: { value: [
-        new Color('#f8c65a'),
-        new Color('#bf7e25'),
-        new Color('#725024'),
-        new Color('#312b22'),
+        new Color('#694332'),
+        new Color('#b66534'),
+        new Color('#ff982e'),
+        new Color('#ffd873'),
       ] },
     },
     side: BackSide,
@@ -40,13 +52,9 @@ export function createSunsetSky() {
   sky.renderOrder = -1;
   sky.frustumCulled = false;
 
-  // Intensity compensates for inverse-square falloff over these world distances.
-  const spotLight = new SpotLight('#ffd29a', 190000);
-  spotLight.position.set(0, 60, -280);
-  spotLight.target.position.set(0, 0, 380);
-  spotLight.angle = Math.PI / 6; // Cone half-angle; increase for wider coverage.
-  spotLight.penumbra = 0.6; // Soft transition around the edge of the cone.
+  const sunLight = new DirectionalLight('#ffecaf', 2);
+  sunLight.position.copy(sunDirection);
   const fillLight = new HemisphereLight('#eeb76a', '#45332b', 1.3);
 
-  return { sky, spotLight, fillLight };
+  return { sky, sunLight, fillLight, sunDirection, sunRadius };
 }

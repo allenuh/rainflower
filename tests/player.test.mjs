@@ -105,6 +105,31 @@ test('walking beyond the finite floor makes the capsule fall', async () => {
   }
 });
 
+test('holding one direction keeps the player moving after dropping onto a large floor', async () => {
+  const physics = await createPhysics();
+  physics.addFloor(1000, 1000, -2.5);
+  physics.addFloor(200, 100, 0, 2.5);
+  const player = createPlayer(physics.world, new Vector3(0, 0, 10), { stepHeight: 2.6 });
+  try {
+    physics.update(1 / 60);
+    const velocity = { x: 20, y: 0, z: 0 };
+    let stalledFrames = 0;
+    for (let frame = 0; frame < 1200; frame++) {
+      const previousX = player.body.translation().x;
+      physics.update(1 / 60, (step) => player.update(step, velocity));
+      const x = player.body.translation().x;
+      stalledFrames = x - previousX < 0.03 ? stalledFrames + 1 : 0;
+      assert.ok(stalledFrames < 4, `Held movement stalled at x=${x}`);
+    }
+    const position = player.body.translation();
+    assert.ok(player.grounded);
+    assert.ok(Math.abs(position.y - 0.25) < 0.08, `Capsule center height: ${position.y}`);
+  } finally {
+    player.dispose();
+    physics.dispose();
+  }
+});
+
 test('the capsule can walk up a gentle slope', async () => {
   const fixture = await createFixture();
   try {

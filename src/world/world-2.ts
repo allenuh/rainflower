@@ -23,12 +23,12 @@ export function createWorld2(physics: Physics, renderer: WebGLRenderer) {
   scene.background = new Color('#4a2c1c');
   // Fade distant geometry into the sunset horizon; the skydome opts out of fog.
   scene.fog = new Fog('#dc790f', 70, 200); // Start/end distances in world units.
-  const { sky, spotLight, fillLight } = createSunsetSky();
-  scene.add(sky, spotLight, spotLight.target, fillLight);
+  const { sky, sunLight, fillLight, sunDirection, sunRadius } = createSunsetSky();
+  scene.add(sky, sunLight, sunLight.target, fillLight);
 
   const upperWidth = 200;
   const upperDepth = 100;
-  const lowerSize = 500;
+  const lowerSize = 1000;
   const upperY = 0;
   const lowerY = -2.5;
   const stepHeight = upperY - lowerY;
@@ -63,7 +63,11 @@ export function createWorld2(physics: Physics, renderer: WebGLRenderer) {
 
   // Cosmetic water covers the lower floor; the original floor keeps its collider.
   const waterY = upperY - 0.5;
-  const water = createWater(lowerSize, lowerSize, waterY);
+  const water = createWater(lowerSize, lowerSize, waterY, {
+    direction: sunDirection,
+    radius: sunRadius,
+    color: sunLight.color,
+  });
   scene.add(water.mesh);
 
   // Plane normals face outward; each wall joins the two floor elevations.
@@ -79,7 +83,7 @@ export function createWorld2(physics: Physics, renderer: WebGLRenderer) {
     scene.add(sideWall);
   }
 
-  return { scene, stepHeight, spotLight, updateWater: water.update };
+  return { scene, stepHeight, updateWater: water.update };
 }
 
 function captureSkyEnvironment(renderer: WebGLRenderer, sky: Mesh) {

@@ -5,7 +5,12 @@ uniform float uRippleScale;
 uniform float uRippleStrength;
 uniform float uReflectionStrength;
 uniform float uDistortion;
-uniform float uShininess;
+uniform vec3 uSunDirection;
+uniform vec3 uSunColor;
+uniform float uSunRadius;
+uniform float uSunGlintRadius;
+uniform float uSunGlintIntensity;
+uniform vec2 uSunPathCosines;
 uniform float uOpacity;
 uniform vec2 uReflectionTexelSize;
 
@@ -14,7 +19,6 @@ varying vec3 vWaterViewPosition;
 varying vec4 vWaterReflectionCoord;
 
 #include <common>
-#include <bsdfs>
 #include <lights_pars_begin>
 #include <fog_pars_fragment>
 
@@ -39,26 +43,31 @@ void main() {
   reflectionUV = clamp(reflectionUV, uReflectionTexelSize, 1.0 - uReflectionTexelSize);
   vec3 reflection = texture2D(tDiffuse, reflectionUV).rgb;
 
-  // Use the actual scene lights, including the moving spotlight's cone/falloff.
+  // Use scene lighting for the water body color. The sun glint is evaluated separately.
   vec3 irradiance = getAmbientLightIrradiance(ambientLightColor);
-  vec3 highlights = vec3(0.0);
   #pragma unroll_loop_start
   for (int i = 0; i < NUM_HEMI_LIGHTS; i++) {
     irradiance += getHemisphereLightIrradiance(hemisphereLights[i], normal);
   }
   #pragma unroll_loop_end
-  IncidentLight light;
-  float cosine;
   #pragma unroll_loop_start
-  for (int i = 0; i < NUM_SPOT_LIGHTS; i++) {
-    getSpotLightInfo(spotLights[i], vWaterViewPosition, light);
-    cosine = max(dot(normal, light.direction), 0.0);
-    irradiance += light.color * cosine;
-    highlights += light.color * cosine * BRDF_BlinnPhong(
-      light.direction, viewDirection, normal, vec3(0.15), uShininess
-    );
+  for (int i = 0; i < NUM_DIR_LIGHTS; i++) {
+    irradiance += directionalLights[i].color * max(dot(normal, directionalLights[i].direction), 0.0);
   }
   #pragma unroll_loop_end
+
+  vec3 eyeToWater = normalize(vWaterWorldPosition - cameraPosition);
+  vec3 reflectedRay = reflect(eyeToWater, worldNormal);
+  // Compare chord lengths on the unit sphere to avoid acos near the sun's center.
+  float sunDistance = length(reflectedRay - uSunDirection);
+  float diskEdge = 2.0 * sin(uSunRadius * 0.5);
+  float glintEdge = 2.0 * sin(max(uSunGlintRadius, uSunRadius + 0.0001) * 0.5);
+  float glintFootprint = 0.5 * fwidth(sunDistance);
+  float glint = 1.0 - smoothstep(diskEdge - glintFootprint, glintEdge + glintFootprint, sunDistance);
+  vec2 waterBearing = eyeToWater.xz / max(length(eyeToWater.xz), 0.0001);
+  float sunBearing = dot(waterBearing, normalize(uSunDirection.xz));
+  float pathWeight = smoothstep(uSunPathCosines.x, uSunPathCosines.y, sunBearing);
+  vec3 highlights = uSunColor * (uSunGlintIntensity * glint * pathWeight);
 
   float fresnel = fresnelSchlick(dot(normal, viewDirection), 0.02);
   // An artistic reflection floor retains the glossy offline-render appearance.
