@@ -1,9 +1,22 @@
-import { Color, Mesh, MeshPhongMaterial, PlaneGeometry, Scene } from 'three';
+import {
+  Color,
+  CubeCamera,
+  HalfFloatType,
+  LinearMipmapLinearFilter,
+  LinearSRGBColorSpace,
+  Mesh,
+  MeshPhongMaterial,
+  PlaneGeometry,
+  Scene,
+  WebGLCubeRenderTarget,
+  type Material,
+  type WebGLRenderer,
+} from 'three';
 import type { Physics } from '../physics/world';
 import { createCheckerboardMarbleMaterial } from './marble';
 import { createSunsetSky } from './sunset';
 
-export function createWorld2(physics: Physics) {
+export function createWorld2(physics: Physics, renderer: WebGLRenderer) {
   const scene = new Scene();
   scene.background = new Color('#4a2c1c');
   const { sky, sunLight, fillLight } = createSunsetSky();
@@ -22,12 +35,16 @@ export function createWorld2(physics: Physics) {
     redScale: 0.18,
     sideTopY: upperY,
   });
+  const skyEnvironment = captureSkyEnvironment(renderer, sky);
+  floorMaterial.envMap = skyEnvironment.texture;
+  // All marble faces share this material and the lifetime of its reflection map.
+  floorMaterial.addEventListener('dispose', () => skyEnvironment.dispose());
 
   function addFloor(
     width: number,
     depth: number,
     surfaceY: number,
-    material: MeshPhongMaterial,
+    material: Material,
     thickness?: number,
   ) {
     const floor = new Mesh(new PlaneGeometry(width, depth), material);
@@ -54,4 +71,23 @@ export function createWorld2(physics: Physics) {
   }
 
   return { scene, stepHeight };
+}
+
+function captureSkyEnvironment(renderer: WebGLRenderer, sky: Mesh) {
+  const captureScene = new Scene();
+  // Capture only the dome, without reparenting the visible sky or the floors.
+  captureScene.add(sky.clone());
+  const environment = new WebGLCubeRenderTarget(256, {
+    type: HalfFloatType,
+    colorSpace: LinearSRGBColorSpace,
+    generateMipmaps: true,
+    minFilter: LinearMipmapLinearFilter,
+  });
+  try {
+    new CubeCamera(0.1, 100, environment).update(renderer, captureScene);
+    return environment;
+  } catch (error) {
+    environment.dispose();
+    throw error;
+  }
 }

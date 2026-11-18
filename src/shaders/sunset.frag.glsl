@@ -1,4 +1,3 @@
-uniform vec3 uSunDirection;
 uniform float uCloudScale;
 uniform float uCloudCoverage;
 uniform vec3 uSkyColors[4];
@@ -47,16 +46,14 @@ void main() {
   float broad = sunsetCloudNoise(cloudPoint, 5);
   float detail = sunsetCloudNoise(cloudPoint * 3.6 + vec2(13.0, 37.0), 3);
   float upper = sunsetCloudNoise(projected * 0.6 + vec2(27.0, 9.0), 3);
-  float sunward = sunsetCloudNoise(cloudPoint + uSunDirection.xz * 0.35, 4);
 
   float density = 0.5 + broad * 1.25 + detail * 0.25;
   float cloudMask = smoothstep(1.0 - uCloudCoverage, 1.22 - uCloudCoverage, density);
   float upperMask = smoothstep(0.36, 0.62, 0.5 + upper);
   cloudMask = 1.0 - (1.0 - cloudMask) * (1.0 - upperMask * 0.45);
 
-  // A sunward density comparison suggests illuminated edges and dark interiors.
-  float edgeLight = clamp((broad - sunward) * 4.0 + 0.35, 0.0, 1.0);
-  float shadow = clamp((density - 0.3) * 2.2 - edgeLight * 0.35, 0.0, 1.0);
+  // Density alone supplies the bright cloud edges and dark interiors.
+  float shadow = clamp((density - 0.35) * 2.2, 0.0, 1.0);
   vec3 cloudColor = colorRamp(shadow, vec4(0.0, 0.3, 0.65, 1.0), uCloudColors);
   cloudColor *= 0.8;
 
