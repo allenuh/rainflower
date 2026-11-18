@@ -10,6 +10,7 @@ import {
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { createEnvironments } from './world/environments';
 import { createPortalRenderer } from './portals/renderer';
+import { createPortalCrossingDetector } from './portals/crossing';
 import { createPhysicsDebug } from './physics/debug';
 import { createPlayer, playerEyeHeight } from './player/controller';
 import { createPropInteraction } from './player/prop-interaction';
@@ -104,6 +105,8 @@ async function start() {
   ), { stepHeight });
   // Register the initial colliders in Rapier's query structures before movement casts.
   physics.update(physics.world.timestep);
+  const portalCrossings = createPortalCrossingDetector(environments.portalPair);
+  portalCrossings.reset(environments.world1, player.body.translation());
   const interaction = createPropInteraction(physics, player.body);
   window.addEventListener('keydown', (event) => {
     if (event.code !== 'KeyE' || !controls.isLocked || event.repeat) return;
@@ -126,6 +129,7 @@ async function start() {
     resetMovement();
     physics.reset();
     player.resetInterpolation();
+    portalCrossings.reset(environments.world1, player.body.translation());
   });
 
   renderer.setAnimationLoop((time: number) => {
@@ -139,6 +143,12 @@ async function start() {
     updateMovementVelocity();
     physics.update(deltaSeconds, (stepSeconds) => {
       player.update(stepSeconds, movementVelocity);
+    }, () => {
+      // Use each completed physics movement, never the interpolated camera pose.
+      const crossing = portalCrossings.update(environments.world1, player.body.translation());
+      if (crossing) {
+        renderer.domElement.dispatchEvent(new CustomEvent('portal-crossing', { detail: crossing }));
+      }
     });
     player.copyCameraPosition(camera.position, physics.interpolationAlpha);
     environments.world1.update(deltaSeconds);

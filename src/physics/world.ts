@@ -111,7 +111,11 @@ export async function createPhysics() {
       return body;
     },
 
-    update(deltaSeconds: number, beforeStep?: (deltaSeconds: number) => void) {
+    update(
+      deltaSeconds: number,
+      beforeStep?: (deltaSeconds: number) => void,
+      afterStep?: (deltaSeconds: number) => void,
+    ) {
       if (!Number.isFinite(deltaSeconds) || deltaSeconds <= 0) return 0;
 
       // Discard excess elapsed time rather than building an unbounded backlog.
@@ -128,6 +132,7 @@ export async function createPhysics() {
         respawnFallenProp();
         accumulator = Math.max(0, accumulator - fixedTimeStep);
         steps++;
+        afterStep?.(fixedTimeStep);
       }
       return steps;
     },
