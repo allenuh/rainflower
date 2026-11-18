@@ -9,6 +9,8 @@ export interface PortalEndpoint {
   anchor: Object3D;
   width: number;
   height: number;
+  readonly closed: boolean;
+  close: () => void;
 }
 
 export interface PortalPair {
@@ -29,7 +31,15 @@ export function createPortalEndpoint(
 ): PortalEndpoint {
   const anchor = new Object3D();
   environment.scene.add(anchor);
-  return { environment, anchor, width, height };
+  let closed = false;
+  return {
+    environment, anchor, width, height,
+    get closed() { return closed; },
+    close() {
+      closed = true;
+      anchor.visible = false;
+    },
+  };
 }
 
 /** Premultiply a world-space pose by this matrix to map it through the portal. */
@@ -53,7 +63,8 @@ export function traversePortal(
   player: ReturnType<typeof createPlayer>,
   camera: PerspectiveCamera,
   movementVelocity: Vector3,
-): void {
+): boolean {
+  if (source.closed || destination.closed) return false;
   const transform = getPortalTransform(source, destination, new Matrix4());
   const position = new Vector3().copy(player.body.translation()).applyMatrix4(transform);
   const rotation = new Quaternion().setFromRotationMatrix(transform);
@@ -67,6 +78,7 @@ export function traversePortal(
   movementVelocity.applyQuaternion(rotation);
   player.copyCameraPosition(camera.position, 1);
   camera.updateMatrixWorld(true);
+  return true;
 }
 
 /** Keep the viewer's lens while moving its complete world-space pose through the pair. */

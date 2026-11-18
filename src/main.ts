@@ -13,6 +13,7 @@ import { createPortalRenderer } from './portals/renderer';
 import { createPortalCrossingDetector } from './portals/crossing';
 import type { PortalCrossing } from './portals/crossing';
 import { traversePortal } from './portals/portal';
+import { createPortalLifecycle } from './portals/lifecycle';
 import { createPhysicsDebug } from './physics/debug';
 import { createPlayer, playerEyeHeight } from './player/controller';
 import { createPropInteraction } from './player/prop-interaction';
@@ -100,6 +101,7 @@ async function start() {
   const environments = await createEnvironments();
   let activeEnvironment = environments.world1;
   const portals = createPortalRenderer(renderer, environments.portalPair);
+  const portalLifecycle = createPortalLifecycle(environments.portalPair);
   const player = createPlayer(activeEnvironment.physics.world, new Vector3(
     camera.position.x,
     camera.position.y - playerEyeHeight,
@@ -163,10 +165,11 @@ async function start() {
       // movement nor runs the transferred player against the old physics world.
       remainingSeconds = physics.reset();
       interaction.dropHeld(camera);
-      traversePortal(crossing.source, crossing.destination, player, camera, movementVelocity);
+      if (!traversePortal(crossing.source, crossing.destination, player, camera, movementVelocity)) break;
       activeEnvironment = crossing.destination.environment;
       activeEnvironment.physics.reset();
       portalCrossings.arriveThrough(crossing.destination, player.body.translation());
+      portalLifecycle.arriveThrough(crossing.destination);
       interaction = createPropInteraction(activeEnvironment.physics, player.body);
 
       const debugVisible = physicsDebug.mesh.visible;
@@ -184,6 +187,7 @@ async function start() {
     interaction.update(camera);
     physics.syncMeshes();
     physicsDebug.update();
+    portalLifecycle.update(activeEnvironment, camera);
     portals.render(activeEnvironment, camera, deltaSeconds);
     renderer.render(activeEnvironment.scene, camera);
   });

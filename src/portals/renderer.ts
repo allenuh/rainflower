@@ -56,6 +56,7 @@ export function createPortalRenderer(renderer: WebGLRenderer, pair: PortalPair) 
 
   return {
     render(environment: Environment, viewer: PerspectiveCamera, deltaSeconds: number) {
+      if (pair.a.closed || pair.b.closed) return;
       viewer.updateWorldMatrix(true, false);
       renderer.getDrawingBufferSize(size);
 

@@ -7,6 +7,7 @@ import { createPlayer } from '../src/player/controller.ts';
 import { createPropInteraction } from '../src/player/prop-interaction.ts';
 import { createPortalEndpoint, getPortalTransform, traversePortal } from '../src/portals/portal.ts';
 import { createPortalCrossingDetector } from '../src/portals/crossing.ts';
+import { createPortalLifecycle } from '../src/portals/lifecycle.ts';
 
 function assertVector(actual, expected, tolerance = 0.00001) {
   assert.ok(actual.distanceTo(expected) < tolerance,
@@ -214,6 +215,49 @@ test('a held prop is released into the source world before the player is transfe
     assert.equal(prop.isDynamic(), true);
     assert.equal(prop.collider(0).isEnabled(), true);
     assert.equal(world1.physics.findProp(prop.handle).body, prop);
+  } finally {
+    dispose();
+  }
+});
+
+test('a visible return opening remains traversable until a later arrival looks away', async () => {
+  const { a, b, player, camera, velocity, world1, world2, dispose } = await fixture();
+  try {
+    const lifecycle = createPortalLifecycle({ a, b });
+    camera.rotation.y = Math.PI;
+    assert.equal(traversePortal(a, b, player, camera, velocity), true);
+    lifecycle.arriveThrough(b);
+    assert.equal(lifecycle.update(world2, camera), false, 'Looking back at the exit must keep it open');
+    const arrival = new Vector3().copy(player.body.translation());
+    const local = b.anchor.worldToLocal(arrival);
+    player.body.setTranslation(b.anchor.localToWorld(new Vector3(local.x, local.y, -0.25)), true);
+    assert.equal(traversePortal(b, a, player, camera, velocity), true);
+    lifecycle.arriveThrough(a);
+    assert.equal(lifecycle.update(world1, camera), true, 'After returning, the entrance is behind the camera');
+  } finally {
+    dispose();
+  }
+});
+
+test('closure prevents return traversal while keeping the current player and both environments alive', async () => {
+  const { a, b, player, camera, velocity, world1, world2, dispose } = await fixture();
+  try {
+    const lifecycle = createPortalLifecycle({ a, b });
+    assert.equal(traversePortal(a, b, player, camera, velocity), true);
+    lifecycle.arriveThrough(b);
+    assert.equal(lifecycle.update(world2, camera), true, 'The return opening is behind the arriving camera');
+    const body = player.body;
+    const position = new Vector3().copy(body.translation());
+    const aim = camera.quaternion.clone();
+    const movement = velocity.clone();
+    assert.equal(traversePortal(b, a, player, camera, velocity), false);
+    assert.equal(player.body, body);
+    assert.equal(body.isValid(), true);
+    assertVector(new Vector3().copy(body.translation()), position);
+    assert.ok(1 - Math.abs(camera.quaternion.dot(aim)) < 1e-12);
+    assertVector(velocity, movement);
+    assert.ok(world1.physics.world.bodies.len() > 0);
+    assert.ok(world2.physics.world.bodies.len() > 0);
   } finally {
     dispose();
   }
