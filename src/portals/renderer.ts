@@ -48,6 +48,7 @@ function createView(source: PortalEndpoint, destination: PortalEndpoint) {
 }
 
 export function createPortalRenderer(renderer: WebGLRenderer, pair: PortalPair) {
+  let disposed = false;
   const views = [createView(pair.a, pair.b), createView(pair.b, pair.a)];
   const size = new Vector2();
   const localViewerPosition = new Vector3();
@@ -56,7 +57,7 @@ export function createPortalRenderer(renderer: WebGLRenderer, pair: PortalPair) 
 
   return {
     render(environment: Environment, viewer: PerspectiveCamera, deltaSeconds: number) {
-      if (pair.a.closed || pair.b.closed) return;
+      if (disposed || pair.a.closed || pair.b.closed) return;
       viewer.updateWorldMatrix(true, false);
       renderer.getDrawingBufferSize(size);
 
@@ -103,12 +104,15 @@ export function createPortalRenderer(renderer: WebGLRenderer, pair: PortalPair) 
     },
 
     dispose() {
+      if (disposed) return;
+      disposed = true;
       for (const { surface, target } of views) {
         surface.removeFromParent();
         surface.geometry.dispose();
         surface.material.dispose();
         target.dispose();
       }
+      views.length = 0;
     },
   };
 }

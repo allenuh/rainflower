@@ -16,6 +16,7 @@ export async function createPhysics() {
   world.timestep = fixedTimeStep;
   let accumulator = 0;
   let respawnCooldown = 0;
+  let disposed = false;
   const objects: {
     mesh: Object3D;
     body: RAPIER.RigidBody;
@@ -55,6 +56,7 @@ export async function createPhysics() {
 
   return {
     world,
+    get disposed() { return disposed; },
 
     get interpolationAlpha() {
       return accumulator / fixedTimeStep;
@@ -116,7 +118,7 @@ export async function createPhysics() {
       beforeStep?: (deltaSeconds: number) => void,
       afterStep?: (deltaSeconds: number) => boolean | void,
     ) {
-      if (!Number.isFinite(deltaSeconds) || deltaSeconds <= 0) return 0;
+      if (disposed || !Number.isFinite(deltaSeconds) || deltaSeconds <= 0) return 0;
 
       // Discard excess elapsed time rather than building an unbounded backlog.
       accumulator = Math.min(
@@ -157,6 +159,7 @@ export async function createPhysics() {
     },
 
     reset() {
+      if (disposed) return 0;
       const remainingSeconds = accumulator;
       accumulator = 0;
       captureTransforms();
@@ -164,6 +167,9 @@ export async function createPhysics() {
     },
 
     dispose() {
+      if (disposed) return;
+      disposed = true;
+      accumulator = 0;
       objects.length = 0;
       world.free();
     },

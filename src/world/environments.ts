@@ -1,15 +1,10 @@
-import type { Scene } from 'three';
-import { createPhysics, type Physics } from '../physics/world';
+import { createPhysics } from '../physics/world';
 import { createPortalEndpoint, type PortalPair } from '../portals/portal';
 import { createWorld1 } from './world-1';
 import { createWorld2 } from './world-2';
+import { createEnvironment } from './environment';
 
-export interface Environment {
-  scene: Scene;
-  physics: Physics;
-  update: (deltaSeconds: number) => void;
-  stepHeight?: number;
-}
+export type { Environment } from './environment';
 
 export async function createEnvironments() {
   const physics1 = await createPhysics();
@@ -17,17 +12,13 @@ export async function createEnvironments() {
   const checkerboard = createWorld1(physics1);
   const sunset = createWorld2(physics2);
 
-  const world1: Environment = {
-    scene: checkerboard.scene,
-    physics: physics1,
-    update: () => {},
-  };
-  const world2: Environment = {
-    scene: sunset.scene,
-    physics: physics2,
+  const world1 = createEnvironment(checkerboard.scene, physics1, {
+    dispose: checkerboard.dispose,
+  });
+  const world2 = createEnvironment(sunset.scene, physics2, {
     update: sunset.updateWater,
     stepHeight: sunset.stepHeight + 0.1,
-  };
+  });
 
   const a = createPortalEndpoint(world1, 8, 8);
   a.anchor.name = 'world-1-portal';

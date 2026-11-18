@@ -9,6 +9,7 @@ import {
 
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { createEnvironments } from './world/environments';
+import { unloadInactiveEnvironment } from './world/environment';
 import { createPortalRenderer } from './portals/renderer';
 import { createPortalCrossingDetector } from './portals/crossing';
 import type { PortalCrossing } from './portals/crossing';
@@ -187,7 +188,12 @@ async function start() {
     interaction.update(camera);
     physics.syncMeshes();
     physicsDebug.update();
-    portalLifecycle.update(activeEnvironment, camera);
+    if (portalLifecycle.update(activeEnvironment, camera)) {
+      portals.dispose();
+      unloadInactiveEnvironment(environments.portalPair, activeEnvironment);
+      // Render lists can retain objects from the previous main-camera scene.
+      renderer.renderLists.dispose();
+    }
     portals.render(activeEnvironment, camera, deltaSeconds);
     renderer.render(activeEnvironment.scene, camera);
   });

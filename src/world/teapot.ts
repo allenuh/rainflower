@@ -1,11 +1,17 @@
-import { Box3, Group, Mesh, MeshPhongMaterial, Vector3 } from 'three';
+import { Box3, Group, Mesh, MeshPhongMaterial, Vector3, type LoadingManager } from 'three';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import teapotUrl from '../assets/models/utah-teapot.obj?url';
 import { createTeapotColliders } from '../physics/teapot';
 import type { Physics } from '../physics/world';
+import { disposeObjectResources } from './environment';
 
-export async function createTeapot(physics: Physics) {
-  const model = await new OBJLoader().loadAsync(teapotUrl);
+export async function createTeapot(physics: Physics, manager?: LoadingManager) {
+  const model = await new OBJLoader(manager).loadAsync(teapotUrl);
+  // A request can finish after its world has been unloaded, even after abort.
+  if (physics.disposed) {
+    disposeObjectResources(model);
+    return;
+  }
   const material = new MeshPhongMaterial({
     color: 0xff8800,
     specular: 0xffffff,
