@@ -114,7 +114,7 @@ export async function createPhysics() {
     update(
       deltaSeconds: number,
       beforeStep?: (deltaSeconds: number) => void,
-      afterStep?: (deltaSeconds: number) => void,
+      afterStep?: (deltaSeconds: number) => boolean | void,
     ) {
       if (!Number.isFinite(deltaSeconds) || deltaSeconds <= 0) return 0;
 
@@ -132,7 +132,8 @@ export async function createPhysics() {
         respawnFallenProp();
         accumulator = Math.max(0, accumulator - fixedTimeStep);
         steps++;
-        afterStep?.(fixedTimeStep);
+        // A world transition must stop this world's remaining catch-up steps.
+        if (afterStep?.(fixedTimeStep) === false) break;
       }
       return steps;
     },
@@ -156,8 +157,10 @@ export async function createPhysics() {
     },
 
     reset() {
+      const remainingSeconds = accumulator;
       accumulator = 0;
       captureTransforms();
+      return remainingSeconds;
     },
 
     dispose() {

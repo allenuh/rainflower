@@ -109,6 +109,10 @@ export function createPropInteraction(physics: Physics, playerBody: RAPIER.Rigid
       return release(camera, true);
     },
 
+    dropHeld(camera: Camera) {
+      return release(camera, false);
+    },
+
     update(camera: Camera) {
       if (!held) return;
       readView(camera);

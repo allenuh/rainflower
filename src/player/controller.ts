@@ -8,17 +8,17 @@ const contactOffset = 0.02;
 const stalledFloorNudge = 0.05;
 const playerMass = 80;
 const pushAcceleration = 12;
+const centerHeight = capsuleHeight / 2;
+type PlayerOptions = { stepHeight?: number };
 
-export function createPlayer(
+function createPlayerPhysics(
   world: RAPIER.World,
-  spawnFeet: Vector3Like,
-  options: { stepHeight?: number } = {},
+  center: Vector3Like,
+  options: PlayerOptions,
 ) {
-  const centerHeight = capsuleHeight / 2;
-  const eyeOffset = playerEyeHeight - centerHeight;
   const body = world.createRigidBody(
     RAPIER.RigidBodyDesc.kinematicPositionBased()
-      .setTranslation(spawnFeet.x, spawnFeet.y + centerHeight + contactOffset, spawnFeet.z)
+      .setTranslation(center.x, center.y, center.z)
       .lockRotations(),
   );
   const collider = world.createCollider(
@@ -39,6 +39,21 @@ export function createPlayer(
   // Apply our bounded impulses below instead of also applying automatic impulses.
   controller.setApplyImpulsesToDynamicBodies(false);
 
+  return { body, collider, controller };
+}
+
+export function createPlayer(
+  world: RAPIER.World,
+  spawnFeet: Vector3Like,
+  options: PlayerOptions = {},
+) {
+  const eyeOffset = playerEyeHeight - centerHeight;
+  let { body, collider, controller } = createPlayerPhysics(world, {
+    x: spawnFeet.x,
+    y: spawnFeet.y + centerHeight + contactOffset,
+    z: spawnFeet.z,
+  }, options);
+
   const previousPosition = new Vector3().copy(body.translation());
   const desiredMovement = new Vector3();
   const correctedMovement = new Vector3();
@@ -48,7 +63,7 @@ export function createPlayer(
   const pushedBodies = new Set<number>();
   let verticalVelocity = 0;
   let grounded = false;
-  const normalNudge = controller.normalNudgeFactor();
+  let normalNudge = controller.normalNudgeFactor();
 
   function computeMovement() {
     controller.computeColliderMovement(
@@ -94,8 +109,8 @@ export function createPlayer(
   }
 
   return {
-    body,
-    collider,
+    get body() { return body; },
+    get collider() { return collider; },
 
     get grounded() {
       return grounded;
@@ -141,6 +156,20 @@ export function createPlayer(
 
     resetInterpolation() {
       previousPosition.copy(body.translation());
+    },
+
+    transferToWorld(destination: RAPIER.World, center: Vector3Like, options: PlayerOptions = {}) {
+      // Rapier bodies belong to one world. Recreate the capsule/controller while
+      // preserving the player's integrated falling speed across upright portals.
+      const next = createPlayerPhysics(destination, center, options);
+      world.removeCharacterController(controller);
+      world.removeRigidBody(body);
+      world = destination;
+      ({ body, collider, controller } = next);
+      normalNudge = controller.normalNudgeFactor();
+      grounded = false;
+      previousPosition.copy(body.translation());
+      world.propagateModifiedBodyPositionsToColliders();
     },
 
     dispose() {

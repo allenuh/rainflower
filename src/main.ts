@@ -11,6 +11,8 @@ import { PointerLockControls } from 'three/addons/controls/PointerLockControls.j
 import { createEnvironments } from './world/environments';
 import { createPortalRenderer } from './portals/renderer';
 import { createPortalCrossingDetector } from './portals/crossing';
+import type { PortalCrossing } from './portals/crossing';
+import { traversePortal } from './portals/portal';
 import { createPhysicsDebug } from './physics/debug';
 import { createPlayer, playerEyeHeight } from './player/controller';
 import { createPropInteraction } from './player/prop-interaction';
@@ -96,18 +98,22 @@ function updateMovementVelocity() {
 
 async function start() {
   const environments = await createEnvironments();
-  const { scene, physics, stepHeight } = environments.world1;
+  let activeEnvironment = environments.world1;
   const portals = createPortalRenderer(renderer, environments.portalPair);
-  const player = createPlayer(physics.world, new Vector3(
+  const player = createPlayer(activeEnvironment.physics.world, new Vector3(
     camera.position.x,
     camera.position.y - playerEyeHeight,
     camera.position.z,
-  ), { stepHeight });
-  // Register the initial colliders in Rapier's query structures before movement casts.
-  physics.update(physics.world.timestep);
+  ), { stepHeight: activeEnvironment.stepHeight });
+  // Both worlds need their initial colliders registered before movement casts,
+  // including the first cast immediately after arriving in a destination.
+  for (const environment of [environments.world1, environments.world2]) {
+    environment.physics.update(environment.physics.world.timestep);
+    environment.physics.reset();
+  }
   const portalCrossings = createPortalCrossingDetector(environments.portalPair);
-  portalCrossings.reset(environments.world1, player.body.translation());
-  const interaction = createPropInteraction(physics, player.body);
+  portalCrossings.reset(activeEnvironment, player.body.translation());
+  let interaction = createPropInteraction(activeEnvironment.physics, player.body);
   window.addEventListener('keydown', (event) => {
     if (event.code !== 'KeyE' || !controls.isLocked || event.repeat) return;
     event.preventDefault();
@@ -116,8 +122,8 @@ async function start() {
   renderer.domElement.addEventListener('mousedown', (event) => {
     if (event.button === 0 && controls.isLocked) interaction.throwHeld(camera);
   });
-  const physicsDebug = createPhysicsDebug(physics.world);
-  scene.add(physicsDebug.mesh);
+  let physicsDebug = createPhysicsDebug(activeEnvironment.physics.world);
+  activeEnvironment.scene.add(physicsDebug.mesh);
 
   window.addEventListener('keydown', (event) => {
     if (event.code !== 'F3') return;
@@ -127,9 +133,9 @@ async function start() {
 
   document.addEventListener('visibilitychange', () => {
     resetMovement();
-    physics.reset();
+    activeEnvironment.physics.reset();
     player.resetInterpolation();
-    portalCrossings.reset(environments.world1, player.body.translation());
+    portalCrossings.reset(activeEnvironment, player.body.translation());
   });
 
   renderer.setAnimationLoop((time: number) => {
@@ -141,22 +147,45 @@ async function start() {
     lastTime = time;
 
     updateMovementVelocity();
-    physics.update(deltaSeconds, (stepSeconds) => {
-      player.update(stepSeconds, movementVelocity);
-    }, () => {
-      // Use each completed physics movement, never the interpolated camera pose.
-      const crossing = portalCrossings.update(environments.world1, player.body.translation());
-      if (crossing) {
-        renderer.domElement.dispatchEvent(new CustomEvent('portal-crossing', { detail: crossing }));
-      }
-    });
+    let remainingSeconds = deltaSeconds;
+    while (true) {
+      const physics = activeEnvironment.physics;
+      let crossing: PortalCrossing | undefined;
+      physics.update(remainingSeconds, (stepSeconds) => {
+        player.update(stepSeconds, movementVelocity);
+      }, () => {
+        crossing = portalCrossings.update(activeEnvironment, player.body.translation());
+        if (crossing) return false;
+      });
+      if (!crossing) break;
+
+      // Hand off unconsumed time so a low frame rate neither skips destination
+      // movement nor runs the transferred player against the old physics world.
+      remainingSeconds = physics.reset();
+      interaction.dropHeld(camera);
+      traversePortal(crossing.source, crossing.destination, player, camera, movementVelocity);
+      activeEnvironment = crossing.destination.environment;
+      activeEnvironment.physics.reset();
+      portalCrossings.reset(activeEnvironment, player.body.translation());
+      interaction = createPropInteraction(activeEnvironment.physics, player.body);
+
+      const debugVisible = physicsDebug.mesh.visible;
+      physicsDebug.mesh.removeFromParent();
+      physicsDebug.dispose();
+      physicsDebug = createPhysicsDebug(activeEnvironment.physics.world);
+      physicsDebug.mesh.visible = debugVisible;
+      activeEnvironment.scene.add(physicsDebug.mesh);
+      physics.syncMeshes();
+      renderer.domElement.dispatchEvent(new CustomEvent('portal-crossing', { detail: crossing }));
+    }
+    const physics = activeEnvironment.physics;
     player.copyCameraPosition(camera.position, physics.interpolationAlpha);
-    environments.world1.update(deltaSeconds);
+    activeEnvironment.update(deltaSeconds);
     interaction.update(camera);
     physics.syncMeshes();
     physicsDebug.update();
-    portals.render(environments.world1, camera, deltaSeconds);
-    renderer.render(scene, camera);
+    portals.render(activeEnvironment, camera, deltaSeconds);
+    renderer.render(activeEnvironment.scene, camera);
   });
 }
 

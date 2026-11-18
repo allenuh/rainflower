@@ -1,5 +1,6 @@
-import { Matrix4, Object3D, Plane, Vector4, type PerspectiveCamera } from 'three';
+import { Matrix4, Object3D, Plane, Quaternion, Vector3, Vector4, type PerspectiveCamera } from 'three';
 import type { Environment } from '../world/environments';
+import type { createPlayer } from '../player/controller';
 
 export interface PortalEndpoint {
   environment: Environment;
@@ -43,6 +44,29 @@ export function getPortalTransform(
   return target.copy(source.anchor.matrixWorld).invert()
     .premultiply(halfTurn)
     .premultiply(destination.anchor.matrixWorld);
+}
+
+/** Move the upright player between physics worlds and preserve portal-relative aim/movement. */
+export function traversePortal(
+  source: PortalEndpoint,
+  destination: PortalEndpoint,
+  player: ReturnType<typeof createPlayer>,
+  camera: PerspectiveCamera,
+  movementVelocity: Vector3,
+): void {
+  const transform = getPortalTransform(source, destination, new Matrix4());
+  const position = new Vector3().copy(player.body.translation()).applyMatrix4(transform);
+  const rotation = new Quaternion().setFromRotationMatrix(transform);
+
+  // Map the completed movement's full position, including its overshoot past
+  // the threshold, instead of snapping the player to the center of the exit.
+  player.transferToWorld(destination.environment.physics.world, position, {
+    stepHeight: destination.environment.stepHeight,
+  });
+  camera.quaternion.premultiply(rotation).normalize();
+  movementVelocity.applyQuaternion(rotation);
+  player.copyCameraPosition(camera.position, 1);
+  camera.updateMatrixWorld(true);
 }
 
 /** Keep the viewer's lens while moving its complete world-space pose through the pair. */
