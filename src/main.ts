@@ -90,7 +90,7 @@ function updateMovementVelocity() {
 
 async function start() {
   const physics = await createPhysics();
-  const { scene, stepHeight, spotLight } = createWorld2(physics, renderer);
+  const { scene, stepHeight, spotLight, updateWater } = createWorld2(physics, renderer);
   const trackPlayerWithSpotlight = createSpotlightYawTracker(spotLight, camera.position);
   const player = createPlayer(physics.world, new Vector3(
     camera.position.x,
@@ -137,6 +137,7 @@ async function start() {
     });
     player.copyCameraPosition(camera.position, physics.interpolationAlpha);
     trackPlayerWithSpotlight(camera.position);
+    updateWater(deltaSeconds);
     interaction.update(camera);
     physics.syncMeshes();
     physicsDebug.update();

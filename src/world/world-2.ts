@@ -15,6 +15,7 @@ import {
 import type { Physics } from '../physics/world';
 import { createCheckerboardMarbleMaterial } from './marble';
 import { createSunsetSky } from './sunset';
+import { createWater } from './water';
 
 export function createWorld2(physics: Physics, renderer: WebGLRenderer) {
   const scene = new Scene();
@@ -57,6 +58,11 @@ export function createWorld2(physics: Physics, renderer: WebGLRenderer) {
   addFloor(upperWidth, upperDepth, upperY, floorMaterial, stepHeight);
   addFloor(lowerSize, lowerSize, lowerY, new MeshPhongMaterial({ color: 0x808080 }));
 
+  // Cosmetic water covers the lower floor; the original floor keeps its collider.
+  const waterY = upperY - 0.5;
+  const water = createWater(lowerSize, lowerSize, waterY);
+  scene.add(water.mesh);
+
   // Plane normals face outward; each wall joins the two floor elevations.
   for (const sign of [-1, 1]) {
     const endWall = new Mesh(new PlaneGeometry(upperWidth, stepHeight), floorMaterial);
@@ -70,7 +76,7 @@ export function createWorld2(physics: Physics, renderer: WebGLRenderer) {
     scene.add(sideWall);
   }
 
-  return { scene, stepHeight, spotLight };
+  return { scene, stepHeight, spotLight, updateWater: water.update };
 }
 
 function captureSkyEnvironment(renderer: WebGLRenderer, sky: Mesh) {

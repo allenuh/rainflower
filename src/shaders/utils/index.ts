@@ -5,6 +5,8 @@ import turbulenceSource from './turbulence2d.glsl?raw';
 import domainWarpSource from './domain-warp2d.glsl?raw';
 import colorRampSource from './color-ramp.glsl?raw';
 import filteringSource from './filtering.glsl?raw';
+import wavesSource from './waves2d.glsl?raw';
+import fresnelSource from './fresnel.glsl?raw';
 
 // Insert these strings before a shader's main(). All exports are self-contained.
 // Include guards allow them to be composed without duplicate definitions.
@@ -16,3 +18,5 @@ export const domainWarp2DGLSL = `${fbm2DGLSL}\n${domainWarpSource}`;
 export const colorRampGLSL = colorRampSource;
 // Fragment shader only: these helpers use screen-space derivatives.
 export const filteringGLSL = filteringSource;
+export const waves2DGLSL = `${filteringSource}\n${wavesSource}`;
+export const fresnelGLSL = fresnelSource;
