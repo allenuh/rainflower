@@ -8,8 +8,7 @@ import {
 } from 'three';
 
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
-import { createWorld2 } from './world/world-2';
-import { createPhysics } from './physics/world';
+import { createEnvironments } from './world/environments';
 import { createPhysicsDebug } from './physics/debug';
 import { createPlayer, playerEyeHeight } from './player/controller';
 import { createPropInteraction } from './player/prop-interaction';
@@ -88,13 +87,13 @@ function updateMovementVelocity() {
 }
 
 async function start() {
-  const physics = await createPhysics();
-  const { scene, stepHeight, updateWater } = createWorld2(physics);
+  const environments = await createEnvironments();
+  const { scene, physics, stepHeight } = environments.world1;
   const player = createPlayer(physics.world, new Vector3(
     camera.position.x,
     camera.position.y - playerEyeHeight,
     camera.position.z,
-  ), { stepHeight: stepHeight + 0.1 });
+  ), { stepHeight });
   // Register the initial colliders in Rapier's query structures before movement casts.
   physics.update(physics.world.timestep);
   const interaction = createPropInteraction(physics, player.body);
@@ -134,7 +133,7 @@ async function start() {
       player.update(stepSeconds, movementVelocity);
     });
     player.copyCameraPosition(camera.position, physics.interpolationAlpha);
-    updateWater(deltaSeconds);
+    environments.world1.update(deltaSeconds);
     interaction.update(camera);
     physics.syncMeshes();
     physicsDebug.update();
