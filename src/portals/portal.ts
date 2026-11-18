@@ -1,4 +1,4 @@
-import { Matrix4, Object3D } from 'three';
+import { Matrix4, Object3D, type PerspectiveCamera } from 'three';
 import type { Environment } from '../world/environments';
 
 export interface PortalEndpoint {
@@ -39,4 +39,27 @@ export function getPortalTransform(
   return target.copy(source.anchor.matrixWorld).invert()
     .premultiply(halfTurn)
     .premultiply(destination.anchor.matrixWorld);
+}
+
+/** Keep the viewer's lens while moving its complete world-space pose through the pair. */
+export function updatePortalCamera(
+  source: PortalEndpoint,
+  destination: PortalEndpoint,
+  viewer: PerspectiveCamera,
+  target: PerspectiveCamera,
+): void {
+  viewer.updateWorldMatrix(true, false);
+  getPortalTransform(source, destination, target.matrix).multiply(viewer.matrixWorld);
+  target.matrix.decompose(target.position, target.quaternion, target.scale);
+  target.updateMatrixWorld(true);
+
+  target.near = viewer.near;
+  target.far = viewer.far;
+  target.fov = viewer.fov;
+  target.aspect = viewer.aspect;
+  target.zoom = viewer.zoom;
+  target.layers.mask = viewer.layers.mask;
+  // Copy the actual matrices, including any asymmetric lens/view offsets.
+  target.projectionMatrix.copy(viewer.projectionMatrix);
+  target.projectionMatrixInverse.copy(viewer.projectionMatrixInverse);
 }

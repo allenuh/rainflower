@@ -9,6 +9,7 @@ import {
 
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { createEnvironments } from './world/environments';
+import { createPortalRenderer } from './portals/renderer';
 import { createPhysicsDebug } from './physics/debug';
 import { createPlayer, playerEyeHeight } from './player/controller';
 import { createPropInteraction } from './player/prop-interaction';
@@ -27,6 +28,12 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = PCFShadowMap;
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
 
 const controls = new PointerLockControls(camera, renderer.domElement);
 
@@ -89,6 +96,7 @@ function updateMovementVelocity() {
 async function start() {
   const environments = await createEnvironments();
   const { scene, physics, stepHeight } = environments.world1;
+  const portals = createPortalRenderer(renderer, environments.portalPair);
   const player = createPlayer(physics.world, new Vector3(
     camera.position.x,
     camera.position.y - playerEyeHeight,
@@ -137,6 +145,7 @@ async function start() {
     interaction.update(camera);
     physics.syncMeshes();
     physicsDebug.update();
+    portals.render(environments.world1, camera, deltaSeconds);
     renderer.render(scene, camera);
   });
 }
