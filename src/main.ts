@@ -166,7 +166,7 @@ async function start() {
       traversePortal(crossing.source, crossing.destination, player, camera, movementVelocity);
       activeEnvironment = crossing.destination.environment;
       activeEnvironment.physics.reset();
-      portalCrossings.reset(activeEnvironment, player.body.translation());
+      portalCrossings.arriveThrough(crossing.destination, player.body.translation());
       interaction = createPropInteraction(activeEnvironment.physics, player.body);
 
       const debugVisible = physicsDebug.mesh.visible;

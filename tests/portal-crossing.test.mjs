@@ -106,6 +106,55 @@ test('environment changes and resets never turn discontinuous movement into a cr
   assert.equal(detector.update(unrelated, new Vector3(0, 0, -1)), undefined);
 });
 
+test('arrival suppresses immediate reverse crossings and repeated jitter around the exit plane', () => {
+  const { world2, b, detector } = fixture();
+  detector.arriveThrough(b, new Vector3(0, 0, 0.00001));
+  for (const z of [-0.00001, 0, 0.02, -0.02, 0.09, -0.01, -0.2]) {
+    assert.equal(detector.update(world2, new Vector3(0, 0, z)), undefined);
+  }
+});
+
+test('moving clear of the exit rearms a deliberate return without a time-based cooldown', () => {
+  const { world2, a, b, detector } = fixture();
+  detector.arriveThrough(b, new Vector3(0, 0, 0));
+  assert.equal(detector.update(world2, new Vector3(0, 0, 0.2)), undefined);
+  const crossing = detector.update(world2, new Vector3(0, 0, -0.1));
+  assert.equal(crossing.source, b);
+  assert.equal(crossing.destination, a);
+  assert.ok(crossing.point.distanceTo(new Vector3()) < 1e-9);
+
+  // A fast traversal may already put the arrival beyond the clearance.
+  detector.arriveThrough(b, new Vector3(0, 0, 0.3));
+  assert.equal(detector.update(world2, new Vector3(0, 0, -0.1)).source, b);
+});
+
+test('pausing near the exit preserves the arrival guard while environment changes clear it', () => {
+  const { world1, world2, a, b, detector } = fixture();
+  detector.arriveThrough(b, new Vector3(0, 0, 0.01));
+  detector.reset(world2, new Vector3(0, 0, 0.01));
+  assert.equal(detector.update(world2, new Vector3(0, 0, -0.01)), undefined);
+  detector.reset(world1, new Vector3(0, 0, 0.01));
+  assert.equal(detector.update(world1, new Vector3(0, 0, -0.01)).source, a);
+});
+
+test('the arrival guard follows a rotated and parented exit in either direction', () => {
+  const { a, b, detector } = fixture();
+  for (const source of [a, b]) {
+    const parent = new Group();
+    source.environment.scene.add(parent);
+    parent.add(source.anchor);
+    parent.position.set(-10, 2, 8);
+    parent.rotation.set(0.2, 1.1, -0.1);
+    source.anchor.position.set(3, 4, -2);
+    source.anchor.rotation.y = -0.6;
+    const point = (z) => source.anchor.localToWorld(new Vector3(1, 1, z));
+    detector.arriveThrough(source, point(0.01));
+    assert.equal(detector.update(source.environment, point(-0.01)), undefined);
+    assert.equal(detector.update(source.environment, point(0.2)), undefined);
+    assert.equal(detector.update(source.environment, point(-0.2)).source, source);
+  }
+});
+
 async function replay(frameTimes, blocked = false) {
   const physics = await createPhysics();
   const { world1, a, detector } = fixture();

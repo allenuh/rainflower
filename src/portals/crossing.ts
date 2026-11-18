@@ -10,15 +10,20 @@ export interface PortalCrossing {
   fraction: number;
 }
 
+const reverseTraversalClearance = 0.1;
+
 /** Track a point crossing the opening; capsule clearance and traversal are separate. */
 export function createPortalCrossingDetector(pair: PortalPair) {
   let previousEnvironment: Environment | undefined;
+  let blockedExit: PortalEndpoint | undefined;
   const previousPosition = new Vector3();
   const previousLocal = new Vector3();
   const currentLocal = new Vector3();
   const inverseAnchor = new Matrix4();
 
   function reset(environment: Environment, position: Vector3Like) {
+    // Visibility/timing resets in the same environment must preserve the guard.
+    if (blockedExit?.environment !== environment) blockedExit = undefined;
     previousEnvironment = environment;
     previousPosition.copy(position);
   }
@@ -26,6 +31,11 @@ export function createPortalCrossingDetector(pair: PortalPair) {
   return {
     // Reseed after discontinuous movement so a teleport isn't treated as walking.
     reset,
+
+    arriveThrough(exit: PortalEndpoint, position: Vector3Like) {
+      reset(exit.environment, position);
+      blockedExit = exit;
+    },
 
     update(environment: Environment, position: Vector3Like): PortalCrossing | undefined {
       if (previousEnvironment !== environment) {
@@ -42,6 +52,16 @@ export function createPortalCrossingDetector(pair: PortalPair) {
         inverseAnchor.copy(source.anchor.matrixWorld).invert();
         previousLocal.copy(previousPosition).applyMatrix4(inverseAnchor);
         currentLocal.copy(position).applyMatrix4(inverseAnchor);
+
+        if (source === blockedExit) {
+          // Rearm only after moving clearly onto the exit's front side. Check
+          // both samples so an arrival already beyond the clearance can return.
+          if (Math.max(previousLocal.z, currentLocal.z) < reverseTraversalClearance) {
+            previousPosition.copy(position);
+            return;
+          }
+          blockedExit = undefined;
+        }
 
         // +Z is the entrance front. Landing exactly on the plane counts once.
         if (previousLocal.z > 0 && currentLocal.z <= 0) {

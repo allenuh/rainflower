@@ -154,13 +154,40 @@ test('a crossing interrupts source catch-up and hands the remaining time to the 
     traversePortal(crossing.source, crossing.destination, player, camera, velocity);
     world2.physics.reset();
     const arrival = new Vector3().copy(player.body.translation());
-    detector.reset(world2, arrival);
+    detector.arriveThrough(b, arrival);
     const destinationSteps = world2.physics.update(remaining, (step) => player.update(step, velocity), () => {
       assert.equal(detector.update(world2, player.body.translation()), undefined);
     });
     assert.equal(destinationSteps, 2);
     assert.ok(player.body.translation().x < arrival.x - 0.5);
     assert.ok(world1.physics.interpolationAlpha < 1e-9);
+  } finally {
+    dispose();
+  }
+});
+
+test('a transferred player cannot bounce back until it clears the destination threshold', async () => {
+  const { a, b, player, camera, velocity, world1, world2, dispose } = await fixture({ startZ: -0.00001 });
+  try {
+    const detector = createPortalCrossingDetector({ a, b });
+    traversePortal(a, b, player, camera, velocity);
+    const arrival = new Vector3().copy(player.body.translation());
+    detector.arriveThrough(b, arrival);
+    // The exit faces -X. A tiny corrected step toward +X crosses its plane.
+    player.body.setTranslation({ x: 10.00001, y: arrival.y, z: arrival.z }, true);
+    assert.equal(detector.update(world2, player.body.translation()), undefined);
+
+    const local = b.anchor.worldToLocal(new Vector3().copy(player.body.translation()));
+    const clear = b.anchor.localToWorld(new Vector3(local.x, local.y, 0.2));
+    player.body.setTranslation(clear, true);
+    assert.equal(detector.update(world2, player.body.translation()), undefined);
+    const back = b.anchor.localToWorld(new Vector3(local.x, local.y, -0.2));
+    player.body.setTranslation(back, true);
+    const crossing = detector.update(world2, player.body.translation());
+    assert.equal(crossing.destination.environment, world1);
+    traversePortal(crossing.source, crossing.destination, player, camera, velocity);
+    detector.arriveThrough(a, player.body.translation());
+    assert.equal(player.body.isValid(), true);
   } finally {
     dispose();
   }
