@@ -16,6 +16,7 @@ varying vec4 vWaterReflectionCoord;
 #include <common>
 #include <bsdfs>
 #include <lights_pars_begin>
+#include <fog_pars_fragment>
 
 void main() {
   vec2 point = vWaterWorldPosition.xz * uRippleScale;
@@ -66,4 +67,5 @@ void main() {
   gl_FragColor = vec4(mix(bodyColor, reflection, reflectionWeight) + highlights, uOpacity);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
+  #include <fog_fragment>
 }

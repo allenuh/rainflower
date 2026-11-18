@@ -32,6 +32,7 @@ export function createSunsetSky() {
       ] },
     },
     side: BackSide,
+    fog: false, // Keep the clouds clear even when the world uses distance fog.
     depthWrite: false,
     depthTest: false,
   });

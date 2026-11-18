@@ -1,6 +1,7 @@
 import {
   Color,
   CubeCamera,
+  Fog,
   HalfFloatType,
   LinearMipmapLinearFilter,
   LinearSRGBColorSpace,
@@ -20,6 +21,8 @@ import { createWater } from './water';
 export function createWorld2(physics: Physics, renderer: WebGLRenderer) {
   const scene = new Scene();
   scene.background = new Color('#4a2c1c');
+  // Fade distant geometry into the sunset horizon; the skydome opts out of fog.
+  scene.fog = new Fog('#dc790f', 70, 200); // Start/end distances in world units.
   const { sky, spotLight, fillLight } = createSunsetSky();
   scene.add(sky, spotLight, spotLight.target, fillLight);
 

@@ -25,6 +25,7 @@ export function createWater(width: number, depth: number, surfaceY: number) {
       name: 'ProceduralWater',
       uniforms: UniformsUtils.merge([
         UniformsLib.lights,
+        UniformsLib.fog,
         {
           tDiffuse: { value: null },
           textureMatrix: { value: new Matrix4() },
@@ -48,6 +49,7 @@ export function createWater(width: number, depth: number, surfaceY: number) {
   mesh.position.y = surfaceY;
   const material = mesh.material as ShaderMaterial;
   material.lights = true;
+  material.fog = true;
   material.transparent = true;
   material.depthWrite = false;
 
