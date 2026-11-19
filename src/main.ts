@@ -98,6 +98,14 @@ function updateMovementVelocity() {
     (right.z * inputDirection.x - forward.z * inputDirection.z) * moveSpeed;
 }
 
+function runWhenIdle(task: () => void) {
+  if (typeof window.requestIdleCallback === 'function') {
+    window.requestIdleCallback(task, { timeout: 500 });
+  } else {
+    setTimeout(task, 100);
+  }
+}
+
 async function start() {
   const environments = await createEnvironments();
   let activeEnvironment = environments.world1;
@@ -140,6 +148,13 @@ async function start() {
     player.resetInterpolation();
     portalCrossings.reset(activeEnvironment, player.body.translation());
   });
+
+  // Compile both worlds for both outputs (canvas and portal render target)
+  // before the first frame, then again for world 1 once its teapot arrives.
+  await portals.prewarm(camera);
+  environments.world1AssetsReady
+    .then(() => portals.prewarm(camera, [environments.world1]))
+    .catch((error) => console.error('Unable to pre-warm late assets:', error));
 
   renderer.setAnimationLoop((time: number) => {
     if (document.hidden) return;
@@ -189,10 +204,16 @@ async function start() {
     physics.syncMeshes();
     physicsDebug.update();
     if (portalLifecycle.update(activeEnvironment, camera)) {
+      // Closing hides both ends immediately; tearing down the old world
+      // (GPU deletes, freeing its Rapier world) waits until the browser is
+      // idle so it never lands on the frame the player crosses.
       portals.dispose();
-      unloadInactiveEnvironment(environments.portalPair, activeEnvironment);
-      // Render lists can retain objects from the previous main-camera scene.
-      renderer.renderLists.dispose();
+      const survivor = activeEnvironment;
+      runWhenIdle(() => {
+        unloadInactiveEnvironment(environments.portalPair, survivor);
+        // Render lists can retain objects from the previous main-camera scene.
+        renderer.renderLists.dispose();
+      });
     }
     portals.render(activeEnvironment, camera, deltaSeconds);
     renderer.render(activeEnvironment.scene, camera);

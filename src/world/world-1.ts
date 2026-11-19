@@ -27,7 +27,9 @@ export function createWorld1(physics: Physics) {
   physics.addFloor(ground.geometry.parameters.width, ground.geometry.parameters.height);
   scene.add(createPrimitives(physics));
   const loadingManager = new LoadingManager();
-  createTeapot(physics, loadingManager)
+  // Resolves once late-loaded assets are in the scene (or failed to load), so
+  // their shaders can be pre-warmed before the player first sees them.
+  const ready = createTeapot(physics, loadingManager)
     .then((teapot) => {
       if (!teapot) return;
       if (physics.disposed) disposeObjectResources(teapot);
@@ -37,5 +39,5 @@ export function createWorld1(physics: Physics) {
       if (!physics.disposed) console.error('Unable to load the Utah teapot:', error);
     });
 
-  return { scene, sky, dispose: () => loadingManager.abort() };
+  return { scene, sky, ready, dispose: () => loadingManager.abort() };
 }

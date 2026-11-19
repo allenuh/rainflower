@@ -55,11 +55,55 @@ export function createPortalRenderer(renderer: WebGLRenderer, pair: PortalPair) 
   const viewport = new Vector4();
   const scissor = new Vector4();
 
+  function matchDrawingBuffer(view: (typeof views)[number]) {
+    renderer.getDrawingBufferSize(size);
+    if (view.target.width !== size.x || view.target.height !== size.y) {
+      view.target.setSize(size.x, size.y);
+    }
+  }
+
   return {
+    /**
+     * Compile every material for both outputs before the first crossing.
+     * three.js keys programs by output color space: the canvas is sRGB but
+     * render targets are linear, so a scene seen only through the portal
+     * would otherwise recompile all of its shaders on the first frame it is
+     * drawn directly (and vice versa for the return view).
+     */
+    async prewarm(
+      viewer: PerspectiveCamera,
+      environments: Environment[] = [pair.a.environment, pair.b.environment],
+    ) {
+      if (disposed) return;
+      for (const view of views) {
+        matchDrawingBuffer(view);
+        renderer.initRenderTarget(view.target);
+      }
+
+      const previousTarget = renderer.getRenderTarget();
+      const previousCubeFace = renderer.getActiveCubeFace();
+      const previousMipmapLevel = renderer.getActiveMipmapLevel();
+      const pending: Promise<unknown>[] = [];
+      try {
+        for (const environment of new Set(environments)) {
+          if (environment.disposed) continue;
+          // compile() reads the active target synchronously, so switching
+          // between calls selects the canvas and render-target variants.
+          renderer.setRenderTarget(null);
+          pending.push(renderer.compileAsync(environment.scene, viewer));
+          renderer.setRenderTarget(views[0].target);
+          pending.push(renderer.compileAsync(environment.scene, viewer));
+        }
+      } finally {
+        renderer.setRenderTarget(previousTarget, previousCubeFace, previousMipmapLevel);
+      }
+      await Promise.all(pending);
+    },
+
+
     render(environment: Environment, viewer: PerspectiveCamera, deltaSeconds: number) {
       if (disposed || pair.a.closed || pair.b.closed) return;
       viewer.updateWorldMatrix(true, false);
-      renderer.getDrawingBufferSize(size);
 
       for (const view of views) {
         if (view.source.environment !== environment || !view.surface.visible) continue;
@@ -68,9 +112,7 @@ export function createPortalRenderer(renderer: WebGLRenderer, pair: PortalPair) 
         // The entrance is one-sided, with its front facing local +Z.
         if (localViewerPosition.z <= 0) continue;
 
-        if (view.target.width !== size.x || view.target.height !== size.y) {
-          view.target.setSize(size.x, size.y);
-        }
+        matchDrawingBuffer(view);
         updatePortalCamera(view.source, view.destination, viewer, view.camera);
         if (!clipPortalCamera(view.destination, view.camera)) continue;
         view.destination.environment.update(deltaSeconds);

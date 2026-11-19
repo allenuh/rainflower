@@ -30,5 +30,5 @@ export async function createEnvironments() {
   b.anchor.rotation.y = Math.PI;
 
   const portalPair: PortalPair = { a, b };
-  return { world1, world2, portalPair };
+  return { world1, world2, portalPair, world1AssetsReady: checkerboard.ready };
 }
