@@ -2,47 +2,52 @@ import { Frustum, Matrix4, Vector3, type PerspectiveCamera } from 'three';
 import type { Environment } from '../world/environments';
 import type { PortalEndpoint, PortalPair } from './portal';
 
+const frustum = new Frustum();
+const viewProjection = new Matrix4();
+
+/**
+ * Clip the opening's rectangle against all six planes of the camera frustum
+ * and return the visible world-space polygon (empty when none of it is in
+ * view). A center/corner-only test would wrongly reject partially visible or
+ * screen-filling openings.
+ */
+export function clipPortalToFrustum(endpoint: PortalEndpoint, camera: PerspectiveCamera): Vector3[] {
+  camera.updateWorldMatrix(true, false);
+  endpoint.anchor.updateWorldMatrix(true, false);
+  viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+  frustum.setFromProjectionMatrix(viewProjection, camera.coordinateSystem);
+
+  const halfWidth = endpoint.width / 2;
+  const halfHeight = endpoint.height / 2;
+  let polygon = [
+    new Vector3(-halfWidth, -halfHeight, 0),
+    new Vector3(halfWidth, -halfHeight, 0),
+    new Vector3(halfWidth, halfHeight, 0),
+    new Vector3(-halfWidth, halfHeight, 0),
+  ].map((corner) => corner.applyMatrix4(endpoint.anchor.matrixWorld));
+
+  for (const plane of frustum.planes) {
+    const clipped: Vector3[] = [];
+    let previous = polygon[polygon.length - 1];
+    let previousDistance = plane.distanceToPoint(previous) + 1e-6;
+    for (const point of polygon) {
+      const distance = plane.distanceToPoint(point) + 1e-6;
+      if ((distance >= 0) !== (previousDistance >= 0)) {
+        clipped.push(new Vector3().lerpVectors(previous, point,
+          previousDistance / (previousDistance - distance)));
+      }
+      if (distance >= 0) clipped.push(point);
+      previous = point;
+      previousDistance = distance;
+    }
+    if (clipped.length === 0) return clipped;
+    polygon = clipped;
+  }
+  return polygon;
+}
+
 export function createPortalLifecycle(pair: PortalPair) {
   let returnEntrance: PortalEndpoint | undefined;
-  const frustum = new Frustum();
-  const viewProjection = new Matrix4();
-
-  function isInFrustum(entrance: PortalEndpoint, viewer: PerspectiveCamera) {
-    viewer.updateWorldMatrix(true, false);
-    entrance.anchor.updateWorldMatrix(true, false);
-    viewProjection.multiplyMatrices(viewer.projectionMatrix, viewer.matrixWorldInverse);
-    frustum.setFromProjectionMatrix(viewProjection, viewer.coordinateSystem);
-
-    const halfWidth = entrance.width / 2;
-    const halfHeight = entrance.height / 2;
-    let polygon = [
-      new Vector3(-halfWidth, -halfHeight, 0),
-      new Vector3(halfWidth, -halfHeight, 0),
-      new Vector3(halfWidth, halfHeight, 0),
-      new Vector3(-halfWidth, halfHeight, 0),
-    ].map((corner) => corner.applyMatrix4(entrance.anchor.matrixWorld));
-
-    // Clip the actual rectangle against all six planes. A center/corner-only
-    // test would incorrectly close partially visible or screen-filling portals.
-    for (const plane of frustum.planes) {
-      const clipped: Vector3[] = [];
-      let previous = polygon[polygon.length - 1];
-      let previousDistance = plane.distanceToPoint(previous) + 1e-6;
-      for (const point of polygon) {
-        const distance = plane.distanceToPoint(point) + 1e-6;
-        if ((distance >= 0) !== (previousDistance >= 0)) {
-          clipped.push(new Vector3().lerpVectors(previous, point,
-            previousDistance / (previousDistance - distance)));
-        }
-        if (distance >= 0) clipped.push(point);
-        previous = point;
-        previousDistance = distance;
-      }
-      if (clipped.length === 0) return false;
-      polygon = clipped;
-    }
-    return true;
-  }
 
   return {
     get closed() { return pair.a.closed || pair.b.closed; },
@@ -56,7 +61,7 @@ export function createPortalLifecycle(pair: PortalPair) {
     update(environment: Environment, viewer: PerspectiveCamera): boolean {
       if (!returnEntrance || returnEntrance.environment !== environment
         || pair.a.closed || pair.b.closed) return false;
-      if (isInFrustum(returnEntrance, viewer)) return false;
+      if (clipPortalToFrustum(returnEntrance, viewer).length > 0) return false;
 
       pair.a.close();
       pair.b.close();

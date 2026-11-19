@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Euler, Group, Matrix4, PerspectiveCamera, Quaternion, Scene, Vector3, Vector4 } from 'three';
-import { clipPortalCamera, createPortalEndpoint, getPortalTransform, updatePortalCamera } from '../src/portals/portal.ts';
+import {
+  clipPortalCamera,
+  createPortalEndpoint,
+  getPortalScissor,
+  getPortalTransform,
+  updatePortalCamera,
+} from '../src/portals/portal.ts';
+import { clipPortalToFrustum } from '../src/portals/lifecycle.ts';
 
 const tolerance = 1e-9;
 
@@ -297,4 +304,37 @@ test('exit clipping stays finite near the opening and skips views looking away',
   const original = camera.projectionMatrix.clone();
   assert.equal(clipPortalCamera(destination, camera), false);
   assertMatrix(camera.projectionMatrix, original);
+});
+
+test('the frustum-clipped opening is empty behind the camera and whole when framed', () => {
+  const portal = endpoint([0, 4, -12]);
+  const camera = new PerspectiveCamera(75, 16 / 9, 0.1, 1000);
+  camera.position.set(0, 4, 0);
+  camera.updateMatrixWorld(true);
+  const framed = clipPortalToFrustum(portal, camera);
+  assert.equal(framed.length, 4, 'A fully visible rectangle keeps its four corners');
+
+  camera.rotation.y = Math.PI;
+  camera.updateMatrixWorld(true);
+  assert.equal(clipPortalToFrustum(portal, camera).length, 0);
+});
+
+test('the scissor tightly bounds a framed opening and clamps a partial one to the target', () => {
+  const portal = endpoint([0, 4, -12]);
+  const camera = new PerspectiveCamera(90, 2, 0.1, 1000);
+  camera.position.set(0, 4, 0);
+  camera.updateMatrixWorld(true);
+  // tan(45°) = 1, so at distance 12 the half-height spans 12 units and the
+  // half-width 24: an 8x8 opening covers 1/6 of the width and 1/3 of the height.
+  const scissor = getPortalScissor(clipPortalToFrustum(portal, camera), camera, 1200, 600, new Vector4(), 0);
+  assert.ok(Math.abs(scissor.x - 500) <= 1 && Math.abs(scissor.z - 200) <= 2, `x/width: ${scissor.toArray()}`);
+  assert.ok(Math.abs(scissor.y - 200) <= 1 && Math.abs(scissor.w - 200) <= 2, `y/height: ${scissor.toArray()}`);
+
+  // Turn so the opening hangs off the left edge; the rectangle starts at 0.
+  camera.rotation.y = -Math.PI / 4 - 0.05;
+  camera.updateMatrixWorld(true);
+  const partial = getPortalScissor(clipPortalToFrustum(portal, camera), camera, 1200, 600, new Vector4());
+  assert.equal(partial.x, 0);
+  assert.ok(partial.z > 0 && partial.z < 1200 && partial.x + partial.z <= 1200);
+  assert.ok(partial.y >= 0 && partial.y + partial.w <= 600);
 });

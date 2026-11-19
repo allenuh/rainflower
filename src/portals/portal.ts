@@ -109,6 +109,39 @@ export function updatePortalCamera(
   target.projectionMatrixInverse.copy(viewer.projectionMatrixInverse);
 }
 
+const projected = new Vector3();
+
+/**
+ * Bottom-left-origin pixel rectangle bounding a frustum-clipped polygon
+ * (from clipPortalToFrustum) on a `width` x `height` target, padded so
+ * bilinear sampling at the opening's edge reads freshly drawn texels.
+ */
+export function getPortalScissor(
+  polygon: readonly Vector3[],
+  camera: PerspectiveCamera,
+  width: number,
+  height: number,
+  target: Vector4,
+  padding = 1,
+): Vector4 {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const point of polygon) {
+    projected.copy(point).project(camera);
+    minX = Math.min(minX, projected.x);
+    minY = Math.min(minY, projected.y);
+    maxX = Math.max(maxX, projected.x);
+    maxY = Math.max(maxY, projected.y);
+  }
+  const left = Math.max(0, Math.floor((minX * 0.5 + 0.5) * width) - padding);
+  const bottom = Math.max(0, Math.floor((minY * 0.5 + 0.5) * height) - padding);
+  const right = Math.min(width, Math.ceil((maxX * 0.5 + 0.5) * width) + padding);
+  const top = Math.min(height, Math.ceil((maxY * 0.5 + 0.5) * height) + padding);
+  return target.set(left, bottom, Math.max(0, right - left), Math.max(0, top - bottom));
+}
+
 /** Apply after updatePortalCamera; keep only the exit's outward (+Z) half-space. */
 export function clipPortalCamera(
   destination: PortalEndpoint,

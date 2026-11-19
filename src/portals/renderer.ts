@@ -12,7 +12,14 @@ import {
   type WebGLRenderer,
 } from 'three';
 import type { Environment } from '../world/environments';
-import { clipPortalCamera, updatePortalCamera, type PortalEndpoint, type PortalPair } from './portal';
+import {
+  clipPortalCamera,
+  getPortalScissor,
+  updatePortalCamera,
+  type PortalEndpoint,
+  type PortalPair,
+} from './portal';
+import { clipPortalToFrustum } from './lifecycle';
 
 function createView(source: PortalEndpoint, destination: PortalEndpoint) {
   const target = new WebGLRenderTarget(1, 1, { type: HalfFloatType });
@@ -167,6 +174,19 @@ export function createPortalRenderer(renderer: WebGLRenderer, pair: PortalPair) 
         if (localViewerPosition.z <= 0) continue;
 
         matchDrawingBuffer(view);
+        if (view.surface.scale.z > flatDepth) {
+          // While recessed for the near plane, the opening itself may lie
+          // closer than the near plane (its clipped polygon is empty) yet the
+          // recess still covers the screen, so draw the whole view.
+          view.target.scissorTest = false;
+        } else {
+          // Off-screen openings cost nothing; visible ones only redraw the
+          // pixels they cover, since the surface samples by screen position.
+          const polygon = clipPortalToFrustum(view.source, viewer);
+          if (polygon.length === 0) continue;
+          getPortalScissor(polygon, viewer, size.x, size.y, view.target.scissor);
+          view.target.scissorTest = true;
+        }
         updatePortalCamera(view.source, view.destination, viewer, view.camera);
         if (!clipPortalCamera(view.destination, view.camera)) continue;
         view.destination.environment.update(deltaSeconds);
@@ -184,8 +204,9 @@ export function createPortalRenderer(renderer: WebGLRenderer, pair: PortalPair) 
           // No portals appear in destination captures, including water reflections.
           views.forEach(({ surface }) => { surface.visible = false; });
           renderer.xr.enabled = false;
+          // Binding the target applies its own scissor; the water Reflector
+          // re-binds it after its pass, so the scissor survives that too.
           renderer.setRenderTarget(view.target);
-          renderer.setScissorTest(false);
           if (!renderer.autoClear) renderer.clear();
           renderer.render(view.destination.environment.scene, view.camera);
         } finally {
