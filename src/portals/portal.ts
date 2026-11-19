@@ -67,16 +67,21 @@ export function traversePortal(
   if (source.closed || destination.closed) return false;
   const transform = getPortalTransform(source, destination, new Matrix4());
   const position = new Vector3().copy(player.body.translation()).applyMatrix4(transform);
+  const previous = new Vector3().copy(player.previousPosition).applyMatrix4(transform);
   const rotation = new Quaternion().setFromRotationMatrix(transform);
 
   // Map the completed movement's full position, including its overshoot past
   // the threshold, instead of snapping the player to the center of the exit.
+  // The interpolation origin is mapped too: the transform is rigid, so the
+  // rendered camera continues along the same path instead of jumping to the
+  // latest physics pose on the crossing frame.
   player.transferToWorld(destination.environment.physics.world, position, {
     stepHeight: destination.environment.stepHeight,
-  });
+  }, previous);
+  // The main camera has no parent, so its local pose is its world pose.
+  camera.position.applyMatrix4(transform);
   camera.quaternion.premultiply(rotation).normalize();
   movementVelocity.applyQuaternion(rotation);
-  player.copyCameraPosition(camera.position, 1);
   camera.updateMatrixWorld(true);
   return true;
 }

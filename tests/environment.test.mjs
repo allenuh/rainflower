@@ -92,6 +92,7 @@ test('an inactive environment is retained while the visible return entrance is s
   try {
     assert.equal(unloadInactiveEnvironment(pair, world1), false);
     camera.rotation.y = Math.PI;
+    player.copyCameraPosition(camera.position, 1);
     traversePortal(a, b, player, camera, velocity);
     lifecycle.arriveThrough(b);
     assert.equal(lifecycle.update(world2, camera), false);

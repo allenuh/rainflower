@@ -48,7 +48,7 @@ async function fixture({ feetY = 0, wall = false, startZ = -0.25 } = {}) {
   };
 }
 
-test('traversal preserves portal-relative position, aim, movement speed, and resets interpolation', async () => {
+test('traversal preserves portal-relative position, aim, movement speed, and camera position', async () => {
   const { a, b, player, camera, velocity, world1, world2, dispose } = await fixture();
   try {
     camera.quaternion.setFromEuler(new Euler(-0.35, 0.6, 0, 'YXZ'));
@@ -91,6 +91,33 @@ test('traversal preserves portal-relative position, aim, movement speed, and res
     assert.equal(destinationBody.isValid(), false);
     assert.equal(world1.physics.world.bodies.len(), sourceBodies);
     assert.equal(world2.physics.world.bodies.len(), destinationBodies);
+  } finally {
+    dispose();
+  }
+});
+
+test('the interpolated camera follows the same path through the portal without jumping', async () => {
+  const { a, b, player, camera, velocity, world1, dispose } = await fixture({ startZ: 0.1 });
+  try {
+    // One step at 20 units/s moves the body a third of a unit, so previous and
+    // current poses differ and interpolation is meaningful.
+    world1.physics.update(1 / 60, (step) => player.update(step, velocity));
+    const previous = new Vector3().copy(player.previousPosition);
+    assert.ok(previous.distanceTo(player.body.translation()) > 0.3);
+    const alphas = [0, 0.25, 0.5, 1];
+    const transform = getPortalTransform(a, b, new Matrix4());
+    const expected = alphas.map((alpha) =>
+      player.copyCameraPosition(new Vector3(), alpha).applyMatrix4(transform));
+    const rendered = expected[2].clone();
+    player.copyCameraPosition(camera.position, 0.5);
+
+    traversePortal(a, b, player, camera, velocity);
+
+    alphas.forEach((alpha, index) => {
+      assertVector(player.copyCameraPosition(new Vector3(), alpha), expected[index]);
+    });
+    assertVector(camera.position, rendered);
+    assertVector(new Vector3().copy(player.previousPosition), previous.applyMatrix4(transform));
   } finally {
     dispose();
   }
@@ -231,6 +258,9 @@ test('a visible return opening remains traversable until a later arrival looks a
     const arrival = new Vector3().copy(player.body.translation());
     const local = b.anchor.worldToLocal(arrival);
     player.body.setTranslation(b.anchor.localToWorld(new Vector3(local.x, local.y, -0.25)), true);
+    // Like a rendered frame in the main loop, place the camera at the moved body.
+    player.resetInterpolation();
+    player.copyCameraPosition(camera.position, 1);
     assert.equal(traversePortal(b, a, player, camera, velocity), true);
     lifecycle.arriveThrough(a);
     assert.equal(lifecycle.update(world1, camera), true, 'After returning, the entrance is behind the camera');

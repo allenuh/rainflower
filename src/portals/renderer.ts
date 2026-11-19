@@ -1,8 +1,9 @@
 import {
+  BackSide,
+  BoxGeometry,
   HalfFloatType,
   Mesh,
   PerspectiveCamera,
-  PlaneGeometry,
   ShaderMaterial,
   Vector2,
   Vector3,
@@ -40,12 +41,41 @@ function createView(source: PortalEndpoint, destination: PortalEndpoint) {
       }
     `,
   });
-  const surface = new Mesh(new PlaneGeometry(source.width, source.height), material);
+  // Win depth ties with geometry that meets the opening's edges (e.g. a floor
+  // level with its bottom), which the recessed box below would otherwise z-fight.
+  material.side = BackSide;
+  material.polygonOffset = true;
+  material.polygonOffsetFactor = -1;
+  material.polygonOffsetUnits = -1;
+  const surface = new Mesh(createRecessGeometry(source.width, source.height), material);
   surface.name = `${source.anchor.name}-surface`;
+  surface.scale.z = flatDepth;
   source.anchor.add(surface);
 
   return { source, destination, target, surface, camera: new PerspectiveCamera() };
 }
+
+/**
+ * An open box behind the opening (local z from -1 to 0, no front cap).
+ * Rendering its inside (BackSide) looks identical to a flat quad because the
+ * shader samples by screen position, but it still covers the screen when the
+ * camera's near plane reaches past the opening during a crossing. From behind,
+ * every remaining face is front-facing and culled, so the portal stays one-sided.
+ */
+function createRecessGeometry(width: number, height: number) {
+  const geometry = new BoxGeometry(width, height, 1);
+  geometry.translate(0, 0, -0.5);
+  // BoxGeometry faces are ordered +X, -X, +Y, -Y, +Z, -Z with six indices each.
+  const indices = Array.from(geometry.index!.array).filter((_, index) => index < 24 || index >= 30);
+  geometry.setIndex(indices);
+  geometry.clearGroups();
+  return geometry;
+}
+
+// Recess depth when the camera is clear of the opening (visually a flat quad).
+const flatDepth = 1e-3;
+// Margin over the farthest near-plane corner when the camera is at the opening.
+const nearClearance = 1.5;
 
 export function createPortalRenderer(renderer: WebGLRenderer, pair: PortalPair) {
   let disposed = false;
@@ -60,6 +90,30 @@ export function createPortalRenderer(renderer: WebGLRenderer, pair: PortalPair) 
     if (view.target.width !== size.x || view.target.height !== size.y) {
       view.target.setSize(size.x, size.y);
     }
+  }
+
+  /**
+   * Deepen the recess only while the near plane could reach the opening, i.e.
+   * the eye is within one near-plane corner distance of it and inside its
+   * outline. Elsewhere it stays flat so its side walls never show at grazing
+   * angles.
+   */
+  function fitRecessDepth(
+    view: (typeof views)[number],
+    viewer: PerspectiveCamera,
+    local: Vector3,
+  ) {
+    const projection = viewer.projectionMatrix.elements;
+    const nearCorner = Math.hypot(
+      viewer.near,
+      viewer.near / projection[0],
+      viewer.near / projection[5],
+    );
+    const depth = nearCorner * nearClearance;
+    const inside = local.z > 0 && local.z < depth
+      && Math.abs(local.x) < view.source.width / 2
+      && Math.abs(local.y) < view.source.height / 2;
+    view.surface.scale.z = inside ? depth : flatDepth;
   }
 
   return {
@@ -100,7 +154,6 @@ export function createPortalRenderer(renderer: WebGLRenderer, pair: PortalPair) 
       await Promise.all(pending);
     },
 
-
     render(environment: Environment, viewer: PerspectiveCamera, deltaSeconds: number) {
       if (disposed || pair.a.closed || pair.b.closed) return;
       viewer.updateWorldMatrix(true, false);
@@ -109,6 +162,7 @@ export function createPortalRenderer(renderer: WebGLRenderer, pair: PortalPair) 
         if (view.source.environment !== environment || !view.surface.visible) continue;
         localViewerPosition.setFromMatrixPosition(viewer.matrixWorld);
         view.source.anchor.worldToLocal(localViewerPosition);
+        fitRecessDepth(view, viewer, localViewerPosition);
         // The entrance is one-sided, with its front facing local +Z.
         if (localViewerPosition.z <= 0) continue;
 

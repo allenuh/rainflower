@@ -154,11 +154,26 @@ export function createPlayer(
       return target;
     },
 
+    /** Body center at the start of the latest physics step (interpolation origin). */
+    get previousPosition(): Readonly<Vector3> {
+      return previousPosition;
+    },
+
     resetInterpolation() {
       previousPosition.copy(body.translation());
     },
 
-    transferToWorld(destination: RAPIER.World, center: Vector3Like, options: PlayerOptions = {}) {
+    /**
+     * Pass `previousCenter` (the interpolation origin mapped into the
+     * destination) to keep the rendered camera continuous across the switch;
+     * omitting it snaps interpolation to the new center.
+     */
+    transferToWorld(
+      destination: RAPIER.World,
+      center: Vector3Like,
+      options: PlayerOptions = {},
+      previousCenter?: Vector3Like,
+    ) {
       // Rapier bodies belong to one world. Recreate the capsule/controller while
       // preserving the player's integrated falling speed across upright portals.
       const next = createPlayerPhysics(destination, center, options);
@@ -168,7 +183,7 @@ export function createPlayer(
       ({ body, collider, controller } = next);
       normalNudge = controller.normalNudgeFactor();
       grounded = false;
-      previousPosition.copy(body.translation());
+      previousPosition.copy(previousCenter ?? body.translation());
       world.propagateModifiedBodyPositionsToColliders();
     },
 
