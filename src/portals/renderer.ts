@@ -4,6 +4,7 @@ import {
   HalfFloatType,
   Mesh,
   PerspectiveCamera,
+  SRGBColorSpace,
   ShaderMaterial,
   Vector2,
   Vector3,
@@ -21,12 +22,34 @@ import {
 } from './portal';
 import { clipPortalToFrustum } from './lifecycle';
 
+/**
+ * A render target that three.js treats like the canvas: programs encode to
+ * its texture's color space (sRGB) and apply tone mapping, and unlit colors
+ * such as fog and the background are converted the same way.
+ *
+ * Plain render targets output linear color, so transparent materials (the
+ * ShadowMaterial overlay, the water) would blend in linear space through the
+ * portal but in sRGB on the canvas, which looks visibly different. three.js
+ * only switches render-target output for XR targets, hence the flag. The
+ * half-float format stores the encoded values as-is (only 8-bit sRGB targets
+ * get hardware encoding, which would encode twice).
+ */
+class DisplayRenderTarget extends WebGLRenderTarget {
+  readonly isXRRenderTarget = true;
+
+  constructor() {
+    super(1, 1, { type: HalfFloatType, colorSpace: SRGBColorSpace });
+  }
+}
+
 function createView(source: PortalEndpoint, destination: PortalEndpoint) {
-  const target = new WebGLRenderTarget(1, 1, { type: HalfFloatType });
+  const target = new DisplayRenderTarget();
   target.texture.name = `${source.anchor.name}-view`;
   const material = new ShaderMaterial({
     name: 'PortalSurface',
     uniforms: { portalTexture: { value: target.texture } },
+    // The view was already tone mapped as it was rendered.
+    toneMapped: false,
     vertexShader: `
       varying vec4 vPortalPosition;
 
@@ -42,8 +65,10 @@ function createView(source: PortalEndpoint, destination: PortalEndpoint) {
       void main() {
         // Sample the matching screen-space ray, rather than stretching mesh UVs.
         vec2 uv = vPortalPosition.xy / vPortalPosition.w * 0.5 + 0.5;
-        gl_FragColor = texture2D(portalTexture, uv);
-        #include <tonemapping_fragment>
+        // The view holds display-encoded color. Decode it so the output step
+        // re-encodes for the canvas (an exact round trip), or leaves it linear
+        // when the surface is itself captured, e.g. by the water's reflection.
+        gl_FragColor = sRGBTransferEOTF(texture2D(portalTexture, uv));
         #include <colorspace_fragment>
       }
     `,
@@ -125,11 +150,11 @@ export function createPortalRenderer(renderer: WebGLRenderer, pair: PortalPair) 
 
   return {
     /**
-     * Compile every material for both outputs before the first crossing.
-     * three.js keys programs by output color space: the canvas is sRGB but
-     * render targets are linear, so a scene seen only through the portal
-     * would otherwise recompile all of its shaders on the first frame it is
-     * drawn directly (and vice versa for the return view).
+     * Compile every material for both outputs before it is first drawn.
+     * three.js keys programs by output color space. Portal views share the
+     * canvas's sRGB programs (see DisplayRenderTarget), but linear render
+     * targets, such as the water's reflection pass, need their own variants,
+     * which would otherwise compile on the frame the water first appears.
      */
     async prewarm(
       viewer: PerspectiveCamera,
@@ -144,19 +169,22 @@ export function createPortalRenderer(renderer: WebGLRenderer, pair: PortalPair) 
       const previousTarget = renderer.getRenderTarget();
       const previousCubeFace = renderer.getActiveCubeFace();
       const previousMipmapLevel = renderer.getActiveMipmapLevel();
+      const linearProbe = new WebGLRenderTarget(1, 1);
       const pending: Promise<unknown>[] = [];
       try {
         for (const environment of new Set(environments)) {
           if (environment.disposed) continue;
           // compile() reads the active target synchronously, so switching
-          // between calls selects the canvas and render-target variants.
+          // between calls selects the display (canvas and portal view) and
+          // linear render-target variants.
           renderer.setRenderTarget(null);
           pending.push(renderer.compileAsync(environment.scene, viewer));
-          renderer.setRenderTarget(views[0].target);
+          renderer.setRenderTarget(linearProbe);
           pending.push(renderer.compileAsync(environment.scene, viewer));
         }
       } finally {
         renderer.setRenderTarget(previousTarget, previousCubeFace, previousMipmapLevel);
+        linearProbe.dispose();
       }
       await Promise.all(pending);
     },
