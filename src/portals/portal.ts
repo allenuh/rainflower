@@ -109,6 +109,33 @@ export function updatePortalCamera(
   target.projectionMatrixInverse.copy(viewer.projectionMatrixInverse);
 }
 
+const viewerLocal = new Vector3();
+
+/**
+ * The rendered camera trails the physics body by up to one fixed step, so on
+ * the frame after a traversal it can still lie behind the exit. Behind the
+ * exit corresponds to the entrance's front: the camera hasn't visually
+ * crossed yet. Drawing the exit's world from there would replace the world
+ * around the entrance, leaving only the exit's edges. Instead, map the camera
+ * back so the frame is drawn from the entrance's world, through the entrance.
+ * Returns false, leaving `target` untouched, once the camera is in front of
+ * the exit.
+ */
+export function updateTrailingCamera(
+  exit: PortalEndpoint,
+  entrance: PortalEndpoint,
+  viewer: PerspectiveCamera,
+  target: PerspectiveCamera,
+): boolean {
+  viewer.updateWorldMatrix(true, false);
+  exit.anchor.updateWorldMatrix(true, false);
+  viewerLocal.setFromMatrixPosition(viewer.matrixWorld);
+  exit.anchor.worldToLocal(viewerLocal);
+  if (viewerLocal.z > 0) return false;
+  updatePortalCamera(exit, entrance, viewer, target);
+  return true;
+}
+
 const projected = new Vector3();
 
 /**

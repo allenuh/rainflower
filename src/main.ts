@@ -13,7 +13,7 @@ import { unloadInactiveEnvironment } from './world/environment';
 import { createPortalRenderer } from './portals/renderer';
 import { createPortalCrossingDetector } from './portals/crossing';
 import type { PortalCrossing } from './portals/crossing';
-import { traversePortal } from './portals/portal';
+import { traversePortal, updateTrailingCamera, type PortalEndpoint } from './portals/portal';
 import { createPortalLifecycle } from './portals/lifecycle';
 import { createPhysicsDebug } from './physics/debug';
 import { createPlayer, playerEyeHeight } from './player/controller';
@@ -133,6 +133,9 @@ async function start() {
   renderer.domElement.addEventListener('mousedown', (event) => {
     if (event.button === 0 && controls.isLocked) interaction.throwHeld(camera);
   });
+  // Set by a traversal until the rendered camera has crossed too.
+  let trailing: { exit: PortalEndpoint; entrance: PortalEndpoint } | undefined;
+  const trailingCamera = new PerspectiveCamera();
   let physicsDebug = createPhysicsDebug(activeEnvironment.physics.world);
   activeEnvironment.scene.add(physicsDebug.mesh);
 
@@ -183,6 +186,7 @@ async function start() {
       interaction.dropHeld(camera);
       if (!traversePortal(crossing.source, crossing.destination, player, camera, movementVelocity)) break;
       activeEnvironment = crossing.destination.environment;
+      trailing = { exit: crossing.destination, entrance: crossing.source };
       activeEnvironment.physics.reset();
       portalCrossings.arriveThrough(crossing.destination, player.body.translation());
       portalLifecycle.arriveThrough(crossing.destination);
@@ -199,11 +203,25 @@ async function start() {
     }
     const physics = activeEnvironment.physics;
     player.copyCameraPosition(camera.position, physics.interpolationAlpha);
-    activeEnvironment.update(deltaSeconds);
+    // Right after a traversal the interpolated camera can still be short of
+    // the exit plane; draw that frame from the entrance's side instead.
+    let viewEnvironment = activeEnvironment;
+    let viewCamera = camera;
+    if (trailing && !trailing.exit.closed && !trailing.entrance.closed
+      && updateTrailingCamera(trailing.exit, trailing.entrance, camera, trailingCamera)) {
+      viewEnvironment = trailing.entrance.environment;
+      viewCamera = trailingCamera;
+    } else {
+      trailing = undefined;
+    }
+    // The portal view updates the other world, so each is updated once.
+    viewEnvironment.update(deltaSeconds);
     interaction.update(camera);
     physics.syncMeshes();
     physicsDebug.update();
-    if (portalLifecycle.update(activeEnvironment, camera)) {
+    // Until the camera has visually arrived, the player is still looking
+    // through the entrance, so the return entrance can't close yet.
+    if (!trailing && portalLifecycle.update(activeEnvironment, camera)) {
       // Closing hides both ends immediately; tearing down the old world
       // (GPU deletes, freeing its Rapier world) waits until the browser is
       // idle so it never lands on the frame the player crosses.
@@ -215,8 +233,8 @@ async function start() {
         renderer.renderLists.dispose();
       });
     }
-    portals.render(activeEnvironment, camera, deltaSeconds);
-    renderer.render(activeEnvironment.scene, camera);
+    portals.render(viewEnvironment, viewCamera, deltaSeconds);
+    renderer.render(viewEnvironment.scene, viewCamera);
   });
 }
 

@@ -5,7 +5,9 @@ import { BoxGeometry, Euler, Matrix4, Mesh, PerspectiveCamera, Quaternion, Scene
 import { createPhysics } from '../src/physics/world.ts';
 import { createPlayer } from '../src/player/controller.ts';
 import { createPropInteraction } from '../src/player/prop-interaction.ts';
-import { createPortalEndpoint, getPortalTransform, traversePortal } from '../src/portals/portal.ts';
+import {
+  createPortalEndpoint, getPortalTransform, traversePortal, updateTrailingCamera,
+} from '../src/portals/portal.ts';
 import { createPortalCrossingDetector } from '../src/portals/crossing.ts';
 import { createPortalLifecycle } from '../src/portals/lifecycle.ts';
 
@@ -118,6 +120,39 @@ test('the interpolated camera follows the same path through the portal without j
     });
     assertVector(camera.position, rendered);
     assertVector(new Vector3().copy(player.previousPosition), previous.applyMatrix4(transform));
+  } finally {
+    dispose();
+  }
+});
+
+test('a camera still short of the exit after traversal is drawn from the entrance side', async () => {
+  const { a, b, player, camera, velocity, world1, dispose } = await fixture({ startZ: 0.1 });
+  try {
+    camera.rotation.set(0, Math.PI / 3, 0);
+    world1.physics.update(1 / 60, (step) => player.update(step, velocity));
+    // A quarter of the way through the step, the rendered eye hasn't reached A.
+    player.copyCameraPosition(camera.position, 0.25);
+    camera.updateMatrixWorld(true);
+    const local = a.anchor.worldToLocal(camera.position.clone());
+    assert.ok(local.z > 0 && local.z < 0.1, `eye should trail just in front of A, got ${local.z}`);
+    const before = { position: camera.position.clone(), quaternion: camera.quaternion.clone() };
+
+    traversePortal(a, b, player, camera, velocity);
+    // The same interpolation now places the eye behind B in world 2.
+    player.copyCameraPosition(camera.position, 0.25);
+    assert.ok(b.anchor.worldToLocal(camera.position.clone()).z < 0);
+
+    const trailing = new PerspectiveCamera();
+    assert.equal(updateTrailingCamera(b, a, camera, trailing), true);
+    assertVector(trailing.position, before.position);
+    assert.ok(trailing.quaternion.angleTo(before.quaternion) < 1e-5);
+    assert.deepEqual(trailing.projectionMatrix.elements, camera.projectionMatrix.elements);
+
+    // Once the eye passes B's plane, world 2 is drawn directly.
+    player.copyCameraPosition(camera.position, 0.5);
+    const untouched = trailing.position.clone();
+    assert.equal(updateTrailingCamera(b, a, camera, trailing), false);
+    assertVector(trailing.position, untouched);
   } finally {
     dispose();
   }
