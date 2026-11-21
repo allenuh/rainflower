@@ -24,6 +24,14 @@ export function createStarfieldSky() {
     ] },
     uStarColorStops: { value: new Vector4(0, 0.25, 0.65, 1) },
     uTintStrength: { value: 0.5 },
+    // Only the sparse bright layer's cells are wide enough to hold a halo.
+    uLayerGlow: { value: new Vector3(1, 0, 0) },
+    uGlowThreshold: { value: 0.45 },
+    uGlowRadius: { value: 0.004 },
+    uGlowStrength: { value: 0.12 },
+    uGlintThreshold: { value: 0.75 },
+    uGlintLength: { value: 0.004 },
+    uGlintStrength: { value: 0.5 },
     uDebugCells: { value: 0 },
   };
   const material = new ShaderMaterial({

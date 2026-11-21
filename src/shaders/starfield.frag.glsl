@@ -11,6 +11,15 @@ uniform float uBrightness;    // Overall gain.
 uniform vec3 uStarColors[4];  // Temperature ramp: warm orange, pale yellow, white, blue-white.
 uniform vec4 uStarColorStops; // Ramp positions for those colors, in [0, 1].
 uniform float uTintStrength;  // 0 is pure white stars, 1 is the full ramp color.
+// Glow on the brightest stars: a soft halo, then a four-point cross glint on
+// the very brightest, like the lens glow and star filters of 90s renders.
+uniform vec3 uLayerGlow;      // Per layer, 0-1: which layers may glow (their cells must be wide).
+uniform float uGlowThreshold; // Flux at which a halo starts to appear.
+uniform float uGlowRadius;    // Angular sigma of the halo, in radians.
+uniform float uGlowStrength;
+uniform float uGlintThreshold; // Flux at which the cross glint starts to appear.
+uniform float uGlintLength;   // Angular falloff length of each spike, in radians.
+uniform float uGlintStrength;
 uniform float uDebugCells;    // 1 tints the bright layer's lattice cells.
 
 varying vec3 vSkyDirection;
@@ -29,7 +38,7 @@ vec3 starTint(float temperature, float flux) {
 // in the spirit of cell-noise starfields (POV-Ray granite thresholds, OSL
 // cellnoise). Working in 3D avoids a longitude seam or crowding at the poles.
 // pixelAngle is the angular width of one pixel at this direction. Each star's
-// visible footprint must stay well under half a cell (about 3 sigma).
+// visible footprint, glow included, must stay well under half a cell.
 // Returns the layer's light, tinted per star.
 vec3 starLayer(
   vec3 direction,
@@ -37,6 +46,7 @@ vec3 starLayer(
   float coverage,
   float brightness,
   float seed,
+  float glow,
   float pixelAngle
 ) {
   vec3 point = direction * density;
@@ -75,9 +85,32 @@ vec3 starLayer(
     float energy = (radius * radius) / (sigma * sigma);
     // Chord length approximates the angle for these tiny separations.
     float distance = length(direction - starDirection);
+    float starLight = brightness * energy * exp(-0.5 * distance * distance / (sigma * sigma));
+
+    if (glow > 0.0) {
+      // The halo is a wide, faint Gaussian around the star's core.
+      float halo = glow * smoothstep(uGlowThreshold, 1.0, flux);
+      starLight += halo * uGlowStrength
+        * exp(-0.5 * distance * distance / (uGlowRadius * uGlowRadius));
+
+      // Spikes run along the sky's horizontal and vertical at the star. Each
+      // is a pixel-thin line whose brightness falls off away from the star.
+      float glint = glow * smoothstep(uGlintThreshold, 1.0, flux);
+      if (glint > 0.0) {
+        vec3 offset = direction - starDirection;
+        vec3 east = normalize(cross(vec3(0.0, 1.0, 0.0), starDirection) + vec3(1e-5, 0.0, 0.0));
+        vec3 north = cross(starDirection, east);
+        float x = dot(offset, east);
+        float y = dot(offset, north);
+        float width = 2.0 * minimumSigma * minimumSigma;
+        float spikes = exp(-abs(x) / uGlintLength - y * y / width)
+          + exp(-abs(y) / uGlintLength - x * x / width);
+        starLight += glint * uGlintStrength * spikes;
+      }
+    }
+
     float temperature = hash31(neighbor + seed + 29.7);
-    light += starTint(temperature, flux)
-      * brightness * energy * exp(-0.5 * distance * distance / (sigma * sigma));
+    light += starTint(temperature, flux) * starLight;
   }
 
   return light;
@@ -103,6 +136,7 @@ void main() {
       uLayerCoverage[layer],
       uLayerBrightness[layer],
       float(layer) * 113.0,
+      uLayerGlow[layer],
       pixelAngle
     );
   }

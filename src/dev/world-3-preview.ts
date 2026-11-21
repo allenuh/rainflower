@@ -92,6 +92,14 @@ async function start() {
     if (event.code !== 'KeyT' || event.repeat) return;
     uniforms.uTintStrength.value = uniforms.uTintStrength.value > 0 ? 0 : tintStrength;
   });
+  // G toggles the glow halo and cross glint off and back on.
+  const glowStrengths = [uniforms.uGlowStrength.value, uniforms.uGlintStrength.value];
+  window.addEventListener('keydown', (event) => {
+    if (event.code !== 'KeyG' || event.repeat) return;
+    const on = uniforms.uGlowStrength.value > 0 || uniforms.uGlintStrength.value > 0;
+    uniforms.uGlowStrength.value = on ? 0 : glowStrengths[0];
+    uniforms.uGlintStrength.value = on ? 0 : glowStrengths[1];
+  });
   // 1, 2 and 3 toggle the bright, medium and faint star layers.
   const layerKeys = ['Digit1', 'Digit2', 'Digit3'] as const;
   window.addEventListener('keydown', (event) => {
