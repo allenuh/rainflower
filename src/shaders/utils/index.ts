@@ -7,6 +7,7 @@ import colorRampSource from './color-ramp.glsl?raw';
 import filteringSource from './filtering.glsl?raw';
 import wavesSource from './waves2d.glsl?raw';
 import fresnelSource from './fresnel.glsl?raw';
+import hash3DSource from './hash3d.glsl?raw';
 
 // Insert these strings before a shader's main(). All exports are self-contained.
 // Include guards allow them to be composed without duplicate definitions.
@@ -20,3 +21,4 @@ export const colorRampGLSL = colorRampSource;
 export const filteringGLSL = filteringSource;
 export const waves2DGLSL = `${filteringSource}\n${wavesSource}`;
 export const fresnelGLSL = fresnelSource;
+export const hash3DGLSL = hash3DSource;
