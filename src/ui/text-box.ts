@@ -9,6 +9,9 @@ import {
   SRGBColorSpace,
   Sphere,
   Vector3,
+  type Camera,
+  type Object3D,
+  type Texture,
 } from 'three';
 
 /** A paragraph of prose, or a block of code drawn line by line in monospace. */
@@ -16,16 +19,36 @@ export type TextBoxParagraph = string | { code: string };
 
 export interface TextBoxContent {
   title: string;
+  /** Split into pages automatically when it's too long for one balloon. */
   body: TextBoxParagraph[];
 }
 
 export interface TextBoxOptions {
   /** Which way the balloon's tail points: down at an object, or up at the sky. */
   pointer?: 'down' | 'up';
-  /** Balloon width in world units; its height follows from the text. */
+  /** Open balloon width in world units; heights follow from the text. */
   width?: number;
   /** Gap in world units from the anchor (its parent, or its own position) to the tail's tip. */
   lift?: number;
+}
+
+/** One way a balloon can look: its picture and its size in world units. */
+export interface TextBoxView {
+  texture: Texture | null;
+  width: number;
+  height: number;
+}
+
+/** A balloon's reading state, kept on its mesh as `userData.textBox`. */
+export interface TextBoxHandle {
+  /** The open page, or -1 while closed. */
+  readonly page: number;
+  readonly pageCount: number;
+  /** Open, turn to the next page, or close after the last one. */
+  advance(): void;
+  close(): void;
+  /** World-space points the player can aim at to pick this balloon. */
+  aimPoints(anchorTarget: Vector3, balloonTarget: Vector3): void;
 }
 
 // Layout in canvas pixels before the resolution scale, sized like early-2000s UI.
@@ -35,59 +58,108 @@ const layout = {
   cornerRadius: 8,
   tailHeight: 16,
   tailHalfWidth: 9,
-  titleHeight: 20,
+  titleHeight: 22,
   titleGap: 6,
   lineHeight: 15,
   codeLineHeight: 14,
   codePadding: 4,
   paragraphGap: 7,
-  iconSize: 16,
+  iconSize: 22, // Room for the icon, which is drawn at a whole-number scale inside it.
+  hintHeight: 14,
+  maxPageBody: 170, // Body height a page holds before the rest moves to the next one.
+  footerGap: 8,
+  buttonHeight: 21,
+  buttonPadding: 12,
 };
 const resolution = 3; // Canvas pixels per layout pixel, so text stays sharp up close.
 const fonts = {
   title: 'bold 12px Tahoma, Verdana, sans-serif',
   body: '12px Tahoma, Verdana, sans-serif',
+  hint: '11px Tahoma, Verdana, sans-serif',
   code: '11px "Lucida Console", "Courier New", monospace',
 };
 const colors = {
   balloon: '#ffffe1',
   ink: '#000000',
+  hint: '#555555',
   codePanel: '#ffffff',
+  buttonFace: '#d4d0c8',
   bevelShadow: '#808080',
+  bevelDark: '#404040',
   bevelLight: '#ffffff',
 };
-// The balloon fades out within this range of camera distances to its anchor,
-// so it never hangs in your face when you stand on top of or hold its prop.
-const fadeStart = 6;
-const fadeEnd = 8;
+// Balloons appear (closed) within this distance of the camera, and an open
+// one closes once you walk beyond it.
+const showRange = 25;
+// They also fade out up close, so one never hangs in your face when you stand
+// on top of or hold its prop.
+const nearFadeStart = 6;
+const nearFadeEnd = 8;
+// How far off the centre of your view a balloon or its object can be and
+// still be the one F opens, in radians.
+const aimAngle = 0.25;
+
+// The title icon, once loaded; until then (or if it fails) a drawn bulb is used.
+let icon: HTMLImageElement | undefined;
+
+/**
+ * Load the picture shown beside every balloon's title. Await it before
+ * creating text boxes: each balloon is painted once, when it's created.
+ */
+export async function loadTextBoxIcon(url: string) {
+  const image = new Image();
+  image.src = url;
+  try {
+    await image.decode();
+    icon = image;
+  } catch (error) {
+    console.warn('Unable to load the text box icon; drawing a bulb instead.', error);
+  }
+}
 
 const anchor = new Vector3();
 const tip = new Vector3();
 const cameraPosition = new Vector3();
 const cameraRotation = new Quaternion();
 const cameraScale = new Vector3();
-const unitScale = new Vector3(1, 1, 1);
+const viewScale = new Vector3();
+const forward = new Vector3();
+const anchorPoint = new Vector3();
+const balloonPoint = new Vector3();
 
 /**
  * A speech balloon in the style of early-2000s desktop help, drawn into the
  * 3D scene. Add it as a child of the object it describes, or place it in the
- * scene at the point it should point to. It always faces the camera.
+ * scene at the point it should point to. It always faces the camera, shows
+ * only its title until opened with F (see pressTextBoxKey), then reads page
+ * by page.
  */
 export function createTextBox(
   content: TextBoxContent,
   { pointer = 'down', width = 6, lift = 1 }: TextBoxOptions = {},
 ) {
-  const canvas = drawBalloon(content, pointer);
-  const texture = new CanvasTexture(canvas);
-  texture.colorSpace = SRGBColorSpace;
-  texture.anisotropy = 8; // Clamped to what the GPU supports.
+  const unitsPerPixel = width / layout.width;
+  const toView = (canvas: HTMLCanvasElement): TextBoxView => {
+    const texture = new CanvasTexture(canvas);
+    texture.colorSpace = SRGBColorSpace;
+    texture.anisotropy = 8; // Clamped to what the GPU supports.
+    return {
+      texture,
+      width: canvas.width / resolution * unitsPerPixel,
+      height: canvas.height / resolution * unitsPerPixel,
+    };
+  };
+  const pages = paginate(content.body);
+  const closed = toView(drawClosedBalloon(content.title, pointer));
+  const pageViews = pages.map((page, index) => toView(
+    drawPage(content.title, page, index, pages.length, pointer),
+  ));
 
-  const height = width * canvas.height / canvas.width;
-  const geometry = new PlaneGeometry(width, height);
-  // Put the tail's tip at the local origin.
-  geometry.translate(0, pointer === 'down' ? height / 2 : -height / 2, 0);
+  // A unit square with the tail's tip at its local origin, scaled per view.
+  const geometry = new PlaneGeometry(1, 1);
+  geometry.translate(0, pointer === 'down' ? 0.5 : -0.5, 0);
   const material = new MeshBasicMaterial({
-    map: texture,
+    map: closed.texture,
     transparent: true,
     depthWrite: false,
     fog: false,
@@ -95,27 +167,59 @@ export function createTextBox(
   });
   const mesh = new Mesh(geometry, material);
   mesh.name = `text-box: ${content.title}`;
-  anchorTextBox(mesh, { width, height, lift });
+  anchorTextBox(mesh, { lift, pointer, closed, pages: pageViews });
   return mesh;
 }
 
 /**
- * Make a balloon mesh (tail tip at its local origin) float `lift` units above
- * its anchor, facing whichever camera draws it, ignoring its parent's spin.
+ * Make a balloon mesh (a unit square with its tail tip at the local origin)
+ * float `lift` units above its anchor, facing whichever camera draws it and
+ * ignoring its parent's spin, showing the closed view or the open page.
  * Its bounds cover everywhere it can be drawn, so a parent prop counts as
  * seen, and is not culled, while only its balloon is on screen.
  */
 export function anchorTextBox(
   mesh: Mesh<PlaneGeometry, MeshBasicMaterial>,
-  { width, height, lift }: { width: number; height: number; lift: number },
+  { lift, pointer, closed, pages }: {
+    lift: number;
+    pointer: 'down' | 'up';
+    closed: TextBoxView;
+    pages: TextBoxView[];
+  },
 ) {
-  // Pick-up bounds skip children with this flag (player/prop-interaction.ts).
-  mesh.userData.textBox = true;
+  let page = -1;
+  const currentView = () => (page < 0 ? closed : pages[page]);
+  const getAnchor = (target: Vector3) => {
+    // Recompute it rather than reading matrixWorld, which onBeforeRender overwrites.
+    target.copy(mesh.position);
+    if (mesh.parent) target.applyMatrix4(mesh.parent.matrixWorld);
+    return target;
+  };
+
+  const handle: TextBoxHandle = {
+    get page() { return page; },
+    pageCount: pages.length,
+    advance() {
+      page = page + 1 < pages.length ? page + 1 : -1;
+    },
+    close() {
+      page = -1;
+    },
+    aimPoints(anchorTarget, balloonTarget) {
+      getAnchor(anchorTarget);
+      const { height } = currentView();
+      balloonTarget.copy(anchorTarget).y += lift + (pointer === 'down' ? height : -height) / 2;
+    },
+  };
+  // Pick-up bounds skip children with this set (player/prop-interaction.ts).
+  mesh.userData.textBox = handle;
   mesh.castShadow = false;
   mesh.receiveShadow = false;
 
-  // Farthest the balloon reaches from its anchor, in any orientation.
-  const reach = lift + Math.hypot(width / 2, height);
+  // Farthest any view reaches from the anchor, in any orientation.
+  const reach = lift + Math.max(
+    ...[closed, ...pages].map(({ width, height }) => Math.hypot(width / 2, height)),
+  );
   mesh.geometry.boundingBox = new Box3(
     new Vector3(-reach, -reach, -reach),
     new Vector3(reach, reach, reach),
@@ -123,113 +227,273 @@ export function anchorTextBox(
   mesh.geometry.boundingSphere = new Sphere(new Vector3(), reach);
 
   mesh.onBeforeRender = (_renderer, _scene, camera) => {
-    // Recompute the anchor rather than reading matrixWorld, which this
-    // callback overwrites.
-    anchor.copy(mesh.position);
-    if (mesh.parent) anchor.applyMatrix4(mesh.parent.matrixWorld);
-    tip.copy(anchor).y += lift;
+    getAnchor(anchor);
     camera.matrixWorld.decompose(cameraPosition, cameraRotation, cameraScale);
-    mesh.matrixWorld.compose(tip, cameraRotation, unitScale);
-    mesh.material.opacity = MathUtils.smoothstep(
-      cameraPosition.distanceTo(anchor),
-      fadeStart,
-      fadeEnd,
-    );
+    const distance = cameraPosition.distanceTo(anchor);
+    if (distance > showRange) page = -1; // Walking away closes it.
+
+    const view = currentView();
+    mesh.material.map = view.texture;
+    tip.copy(anchor).y += lift;
+    mesh.matrixWorld.compose(tip, cameraRotation, viewScale.set(view.width, view.height, 1));
+    mesh.material.opacity = MathUtils.smoothstep(distance, nearFadeStart, nearFadeEnd)
+      * (1 - MathUtils.smoothstep(distance, showRange - 3, showRange));
   };
+  return handle;
 }
 
-function drawBalloon({ title, body }: TextBoxContent, pointer: 'down' | 'up') {
-  const measureCanvas = document.createElement('canvas').getContext('2d')!;
-  const textWidth = layout.width - layout.padding * 2;
-
-  // Lay out every line first, to size the canvas.
-  type Line = { text: string; font: string; y: number };
-  const lines: Line[] = [];
-  const codePanels: { top: number; height: number }[] = [];
-  let y = layout.padding + layout.titleHeight + layout.titleGap;
-  body.forEach((paragraph, index) => {
-    if (index > 0) y += layout.paragraphGap;
-    if (typeof paragraph === 'string') {
-      measureCanvas.font = fonts.body;
-      const measure = (text: string) => measureCanvas.measureText(text).width;
-      for (const text of wrapText(paragraph, textWidth, measure)) {
-        lines.push({ text, font: fonts.body, y });
-        y += layout.lineHeight;
-      }
-    } else {
-      const top = y;
-      y += layout.codePadding;
-      for (const text of paragraph.code.split('\n')) {
-        lines.push({ text, font: fonts.code, y });
-        y += layout.codeLineHeight;
-      }
-      y += layout.codePadding;
-      codePanels.push({ top, height: y - top });
+/**
+ * The balloon in `scene` the camera is aiming at: within reading range, with
+ * its object or its balloon closest to the centre of view and within aimAngle.
+ */
+export function findAimedTextBox(scene: Object3D, camera: Camera) {
+  camera.getWorldPosition(cameraPosition);
+  camera.getWorldDirection(forward);
+  let best: TextBoxHandle | undefined;
+  let bestAngle = aimAngle;
+  scene.traverseVisible((object) => {
+    const handle = object.userData.textBox as TextBoxHandle | undefined;
+    if (!handle) return;
+    handle.aimPoints(anchorPoint, balloonPoint);
+    if (cameraPosition.distanceTo(anchorPoint) > showRange) return;
+    const angle = Math.min(
+      forward.angleTo(anchorPoint.sub(cameraPosition)),
+      forward.angleTo(balloonPoint.sub(cameraPosition)),
+    );
+    if (angle < bestAngle) {
+      best = handle;
+      bestAngle = angle;
     }
   });
-  const balloonHeight = y + layout.padding;
-  const balloonTop = pointer === 'up' ? layout.tailHeight : 0;
+  return best;
+}
 
+/**
+ * F: open the aimed-at balloon, or turn its page, or close it after the last
+ * page. Any other open balloon closes, so only one is open at a time.
+ */
+export function pressTextBoxKey(scene: Object3D, camera: Camera) {
+  const aimed = findAimedTextBox(scene, camera);
+  scene.traverse((object) => {
+    const handle = object.userData.textBox as TextBoxHandle | undefined;
+    if (handle && handle !== aimed) handle.close();
+  });
+  aimed?.advance();
+}
+
+type Measure = (text: string) => number;
+type LaidOutParagraph = {
+  height: number;
+  lines: { text: string; font: string; y: number }[];
+  isCode: boolean;
+};
+
+function createMeasure(font: string): Measure {
+  const context = document.createElement('canvas').getContext('2d')!;
+  context.font = font;
+  return (text) => context.measureText(text).width;
+}
+
+/** Lines of one paragraph, positioned from its own top. */
+function layOutParagraph(paragraph: TextBoxParagraph, measureBody: Measure): LaidOutParagraph {
+  const lines: LaidOutParagraph['lines'] = [];
+  let y = 0;
+  if (typeof paragraph === 'string') {
+    for (const text of wrapText(paragraph, layout.width - layout.padding * 2, measureBody)) {
+      lines.push({ text, font: fonts.body, y });
+      y += layout.lineHeight;
+    }
+    return { height: y, lines, isCode: false };
+  }
+  y += layout.codePadding;
+  for (const text of paragraph.code.split('\n')) {
+    lines.push({ text, font: fonts.code, y });
+    y += layout.codeLineHeight;
+  }
+  return { height: y + layout.codePadding, lines, isCode: true };
+}
+
+/** Group paragraphs into pages that each fit within layout.maxPageBody. */
+function paginate(body: TextBoxParagraph[]) {
+  const measureBody = createMeasure(fonts.body);
+  const pages: LaidOutParagraph[][] = [];
+  let page: LaidOutParagraph[] = [];
+  let height = 0;
+  for (const paragraph of body) {
+    const laidOut = layOutParagraph(paragraph, measureBody);
+    if (page.length && height + layout.paragraphGap + laidOut.height > layout.maxPageBody) {
+      pages.push(page);
+      page = [];
+      height = 0;
+    }
+    height += (page.length ? layout.paragraphGap : 0) + laidOut.height;
+    page.push(laidOut);
+  }
+  if (page.length) pages.push(page);
+  return pages;
+}
+
+/** A blank balloon sized for `contentHeight` of content, ready to draw into. */
+function createBalloonCanvas(width: number, contentHeight: number, pointer: 'down' | 'up') {
+  const balloonHeight = contentHeight + layout.padding * 2;
+  const top = pointer === 'up' ? layout.tailHeight : 0;
   const canvas = document.createElement('canvas');
-  canvas.width = layout.width * resolution;
+  canvas.width = width * resolution;
   canvas.height = (balloonHeight + layout.tailHeight + 1) * resolution;
   const context = canvas.getContext('2d')!;
   context.scale(resolution, resolution);
 
-  traceBalloon(context, balloonTop, balloonHeight, pointer);
+  traceBalloon(context, width, top, balloonHeight, pointer);
   context.fillStyle = colors.balloon;
   context.fill();
   context.lineWidth = 1;
   context.strokeStyle = colors.ink;
   context.stroke();
+  return { canvas, context, contentTop: top + layout.padding };
+}
 
-  const titleTop = balloonTop + layout.padding;
-  drawLightbulb(context, layout.padding, titleTop + 1);
+function drawTitle(context: CanvasRenderingContext2D, title: string, top: number) {
+  if (icon) {
+    drawPixelIcon(context, icon, layout.padding, top);
+  } else {
+    // The drawn bulb is 16px; center it in the icon's room.
+    const inset = (layout.iconSize - 16) / 2;
+    drawLightbulb(context, layout.padding + inset, top + (layout.titleHeight - 16) / 2);
+  }
   context.fillStyle = colors.ink;
   context.textBaseline = 'middle';
   context.font = fonts.title;
-  context.fillText(title, layout.padding + layout.iconSize + 6, titleTop + layout.titleHeight / 2);
+  context.fillText(title, layout.padding + layout.iconSize + 6, top + layout.titleHeight / 2);
+}
 
-  // Code sits in a white, sunken panel, like samples in old help files.
-  for (const panel of codePanels) {
-    const left = layout.padding + 0.5;
-    const right = layout.width - layout.padding - 0.5;
-    const top = balloonTop + panel.top + 0.5;
-    const bottom = top + panel.height - 1;
-    context.fillStyle = colors.codePanel;
-    context.fillRect(left, top, right - left, bottom - top);
-    context.beginPath();
-    context.moveTo(left, bottom);
-    context.lineTo(left, top);
-    context.lineTo(right, top);
-    context.strokeStyle = colors.bevelShadow;
-    context.stroke();
-    context.beginPath();
-    context.moveTo(right, top);
-    context.lineTo(right, bottom);
-    context.lineTo(left, bottom);
-    context.strokeStyle = colors.bevelLight;
-    context.stroke();
-  }
-  context.fillStyle = colors.ink;
-
+/** The closed balloon: just the title and a hint to press F. */
+function drawClosedBalloon(title: string, pointer: 'down' | 'up') {
+  const hint = 'Press F to read';
+  const titleWidth = layout.iconSize + 6 + createMeasure(fonts.title)(title);
+  const hintWidth = createMeasure(fonts.hint)(hint);
+  const width = Math.ceil(Math.max(titleWidth, hintWidth) + layout.padding * 2);
+  const { canvas, context, contentTop } = createBalloonCanvas(
+    width,
+    layout.titleHeight + layout.hintHeight,
+    pointer,
+  );
+  drawTitle(context, title, contentTop);
+  context.fillStyle = colors.hint;
   context.textBaseline = 'top';
-  for (const line of lines) {
-    context.font = line.font;
-    const indent = line.font === fonts.code ? 8 : 0;
-    context.fillText(line.text, layout.padding + indent, balloonTop + line.y);
-  }
+  context.font = fonts.hint;
+  context.fillText(hint, layout.padding, contentTop + layout.titleHeight + 1);
   return canvas;
+}
+
+/** One open page: title, body, then a page count and a Next or Close button. */
+function drawPage(
+  title: string,
+  paragraphs: LaidOutParagraph[],
+  index: number,
+  pageCount: number,
+  pointer: 'down' | 'up',
+) {
+  const bodyHeight = paragraphs.reduce(
+    (sum, paragraph, i) => sum + paragraph.height + (i > 0 ? layout.paragraphGap : 0),
+    0,
+  );
+  const bodyTop = layout.titleHeight + layout.titleGap;
+  const footerTop = bodyTop + bodyHeight + layout.footerGap;
+  const { canvas, context, contentTop } = createBalloonCanvas(
+    layout.width,
+    footerTop + layout.buttonHeight,
+    pointer,
+  );
+  drawTitle(context, title, contentTop);
+
+  let y = contentTop + bodyTop;
+  for (const paragraph of paragraphs) {
+    if (paragraph.isCode) drawCodePanel(context, y, paragraph.height);
+    context.fillStyle = colors.ink;
+    context.textBaseline = 'top';
+    for (const line of paragraph.lines) {
+      context.font = line.font;
+      const indent = paragraph.isCode ? 8 : 0;
+      context.fillText(line.text, layout.padding + indent, y + line.y);
+    }
+    y += paragraph.height + layout.paragraphGap;
+  }
+
+  const buttonTop = contentTop + footerTop;
+  if (pageCount > 1) {
+    context.fillStyle = colors.hint;
+    context.textBaseline = 'middle';
+    context.font = fonts.hint;
+    context.fillText(`Page ${index + 1} of ${pageCount}`, layout.padding, buttonTop + layout.buttonHeight / 2);
+  }
+  drawButton(context, index + 1 < pageCount ? 'Next (F)' : 'Close (F)', buttonTop);
+  return canvas;
+}
+
+/** Code sits in a white, sunken panel, like samples in old help files. */
+function drawCodePanel(context: CanvasRenderingContext2D, top: number, height: number) {
+  const left = layout.padding + 0.5;
+  const right = layout.width - layout.padding - 0.5;
+  const upper = top + 0.5;
+  const lower = upper + height - 1;
+  context.fillStyle = colors.codePanel;
+  context.fillRect(left, upper, right - left, lower - upper);
+  drawBevel(context, left, upper, right, lower, colors.bevelShadow, colors.bevelLight);
+}
+
+/** A raised push button, right-aligned in the balloon. */
+function drawButton(context: CanvasRenderingContext2D, label: string, top: number) {
+  context.font = fonts.body;
+  const width = Math.ceil(context.measureText(label).width + layout.buttonPadding * 2);
+  const right = layout.width - layout.padding - 0.5;
+  const left = right - width;
+  const upper = top + 0.5;
+  const lower = upper + layout.buttonHeight - 1;
+  context.fillStyle = colors.buttonFace;
+  context.fillRect(left, upper, width, lower - upper);
+  context.lineWidth = 1;
+  drawBevel(context, left, upper, right, lower, colors.bevelLight, colors.bevelDark);
+  drawBevel(context, left + 1, upper + 1, right - 1, lower - 1, colors.buttonFace, colors.bevelShadow);
+  context.fillStyle = colors.ink;
+  context.textBaseline = 'middle';
+  context.textAlign = 'center';
+  context.fillText(label, (left + right) / 2, top + layout.buttonHeight / 2);
+  context.textAlign = 'left';
+}
+
+/** A 1px frame: `topLeft` color along the top and left, `bottomRight` along the rest. */
+function drawBevel(
+  context: CanvasRenderingContext2D,
+  left: number,
+  top: number,
+  right: number,
+  bottom: number,
+  topLeft: string,
+  bottomRight: string,
+) {
+  context.beginPath();
+  context.moveTo(left, bottom);
+  context.lineTo(left, top);
+  context.lineTo(right, top);
+  context.strokeStyle = topLeft;
+  context.stroke();
+  context.beginPath();
+  context.moveTo(right, top);
+  context.lineTo(right, bottom);
+  context.lineTo(left, bottom);
+  context.strokeStyle = bottomRight;
+  context.stroke();
 }
 
 /** Rounded rectangle with a tail at the middle of its bottom or top edge. */
 function traceBalloon(
   context: CanvasRenderingContext2D,
+  width: number,
   top: number,
   height: number,
   pointer: 'down' | 'up',
 ) {
-  const { width, cornerRadius: r, tailHeight, tailHalfWidth } = layout;
+  const { cornerRadius: r, tailHeight, tailHalfWidth } = layout;
   // Half-pixel offsets keep the 1px outline crisp.
   const left = 0.5;
   const right = width - 0.5;
@@ -256,7 +520,35 @@ function traceBalloon(
   context.closePath();
 }
 
-/** A small "tip" lightbulb icon, drawn with paths so no image is needed. */
+/**
+ * Draw pixel art at the largest whole-number scale that fits the icon's room,
+ * without smoothing, so every source pixel stays a crisp square.
+ */
+function drawPixelIcon(
+  context: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  left: number,
+  top: number,
+) {
+  const room = layout.iconSize * resolution;
+  const scale = Math.max(1, Math.floor(room / Math.max(image.width, image.height)));
+  const width = image.width * scale;
+  const height = image.height * scale;
+  context.save();
+  // Work in canvas pixels so the icon lands exactly on the pixel grid.
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.imageSmoothingEnabled = false;
+  context.drawImage(
+    image,
+    Math.round(left * resolution + (room - width) / 2),
+    Math.round(top * resolution + (layout.titleHeight * resolution - height) / 2),
+    width,
+    height,
+  );
+  context.restore();
+}
+
+/** A small "tip" lightbulb icon, drawn with paths, used until an icon loads. */
 function drawLightbulb(context: CanvasRenderingContext2D, x: number, y: number) {
   context.save();
   context.translate(x, y);

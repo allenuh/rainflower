@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  Box3, BoxGeometry, Frustum, Matrix4, Mesh, MeshBasicMaterial, PerspectiveCamera,
+  Box3, BoxGeometry, Frustum, Matrix4, Mesh, MeshBasicMaterial, Object3D, PerspectiveCamera,
   PlaneGeometry, Vector3,
 } from 'three';
 import { setBoundsWithoutTextBoxes } from '../src/player/prop-interaction.ts';
-import { anchorTextBox, wrapText } from '../src/ui/text-box.ts';
+import { anchorTextBox, findAimedTextBox, pressTextBoxKey, wrapText } from '../src/ui/text-box.ts';
 
 // One unit per character keeps the expected widths easy to read.
 const measure = (text) => text.length;
@@ -20,20 +20,24 @@ test('wrapText splits a word longer than a whole line', () => {
   assert.deepEqual(wrapText('a supercalifragilistic word', 8, measure), ['a', 'supercal', 'ifragili', 'stic', 'word']);
 });
 
-/** A 1-unit cube prop at the origin with a 6x3 balloon 4 units above it. */
+/**
+ * A 1-unit cube prop at the origin with a balloon 4 units above it: 2x1 when
+ * closed, with two pages, 6x3 and 6x2.
+ */
 function propWithTextBox() {
   const prop = new Mesh(new BoxGeometry(1, 1, 1));
-  const width = 6;
-  const height = 3;
-  const lift = 4;
-  const balloon = new Mesh(
-    new PlaneGeometry(width, height).translate(0, height / 2, 0),
-    new MeshBasicMaterial(),
-  );
-  anchorTextBox(balloon, { width, height, lift });
+  const balloon = new Mesh(new PlaneGeometry(1, 1).translate(0, 0.5, 0), new MeshBasicMaterial());
+  anchorTextBox(balloon, {
+    lift: 4,
+    pointer: 'down',
+    closed: { texture: null, width: 2, height: 1 },
+    pages: [{ texture: null, width: 6, height: 3 }, { texture: null, width: 6, height: 2 }],
+  });
   prop.add(balloon);
   return prop;
 }
+
+const handleOf = (prop) => prop.children[0].userData.textBox;
 
 function cameraLookingAt(position, target) {
   const camera = new PerspectiveCamera(30, 1, 0.1, 100);
@@ -88,5 +92,69 @@ test('pick-up bounds leave out text boxes and keep them attached', () => {
   assert.deepEqual(bounds.min.toArray(), [-0.5, -0.5, -0.5]);
   assert.deepEqual(bounds.max.toArray(), [0.5, 0.5, 0.5]);
   assert.equal(prop.children.length, 1);
-  assert.equal(prop.children[0].userData.textBox, true);
+  assert.ok(prop.children[0].userData.textBox);
+});
+
+test('F opens a text box, turns its pages, then closes it', () => {
+  const handle = handleOf(propWithTextBox());
+  assert.equal(handle.pageCount, 2);
+  assert.equal(handle.page, -1);
+  handle.advance();
+  assert.equal(handle.page, 0);
+  handle.advance();
+  assert.equal(handle.page, 1);
+  handle.advance();
+  assert.equal(handle.page, -1);
+});
+
+test('an open text box closes once the camera walks out of range', () => {
+  const prop = propWithTextBox();
+  prop.updateMatrixWorld();
+  const handle = handleOf(prop);
+  handle.advance();
+
+  prop.children[0].onBeforeRender(null, null, cameraLookingAt(new Vector3(0, 5, 15), new Vector3()));
+  assert.equal(handle.page, 0);
+  prop.children[0].onBeforeRender(null, null, cameraLookingAt(new Vector3(0, 5, 40), new Vector3()));
+  assert.equal(handle.page, -1);
+});
+
+/** Two props with text boxes, side by side, and one far away. */
+function propsScene() {
+  const scene = new Object3D();
+  const [left, right, far] = Array.from({ length: 3 }, propWithTextBox);
+  left.position.set(-6, 0, 0);
+  right.position.set(6, 0, 0);
+  far.position.set(0, 0, -60);
+  scene.add(left, right, far);
+  scene.updateMatrixWorld();
+  return { scene, left, right, far };
+}
+
+test('F picks the in-range text box nearest the centre of view', () => {
+  const { scene, left, right, far } = propsScene();
+  // Aimed at the right prop's balloon from 12 units away.
+  const camera = cameraLookingAt(new Vector3(6, 5, 12), new Vector3(6, 5, 0));
+  assert.equal(findAimedTextBox(scene, camera), handleOf(right));
+
+  // Aimed straight down the middle, toward the far prop that's out of range.
+  const middle = cameraLookingAt(new Vector3(0, 5, 12), new Vector3(0, 0, -60));
+  assert.equal(findAimedTextBox(scene, middle), undefined);
+  assert.notEqual(findAimedTextBox(scene, camera), handleOf(left));
+  assert.notEqual(findAimedTextBox(scene, camera), handleOf(far));
+});
+
+test('only one text box is open at a time, and F aimed at nothing closes it', () => {
+  const { scene, left, right } = propsScene();
+  const atLeft = cameraLookingAt(new Vector3(-6, 5, 12), new Vector3(-6, 5, 0));
+  const atRight = cameraLookingAt(new Vector3(6, 5, 12), new Vector3(6, 5, 0));
+  const atNothing = cameraLookingAt(new Vector3(0, 5, 12), new Vector3(0, 30, 12));
+
+  pressTextBoxKey(scene, atLeft);
+  assert.equal(handleOf(left).page, 0);
+  pressTextBoxKey(scene, atRight);
+  assert.equal(handleOf(left).page, -1);
+  assert.equal(handleOf(right).page, 0);
+  pressTextBoxKey(scene, atNothing);
+  assert.equal(handleOf(right).page, -1);
 });

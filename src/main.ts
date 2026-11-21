@@ -18,6 +18,7 @@ import { createPortalLifecycle } from './portals/lifecycle';
 import { createPhysicsDebug } from './physics/debug';
 import { createPlayer, playerEyeHeight } from './player/controller';
 import { createPropInteraction } from './player/prop-interaction';
+import { pressTextBoxKey } from './ui/text-box';
 
 const camera = new PerspectiveCamera(
   75,
@@ -129,6 +130,12 @@ async function start() {
     if (event.code !== 'KeyE' || !controls.isLocked || event.repeat) return;
     event.preventDefault();
     interaction.pressE(camera);
+  });
+  window.addEventListener('keydown', (event) => {
+    if (event.code !== 'KeyF' || !controls.isLocked || event.repeat) return;
+    event.preventDefault();
+    // Open, page through or close the text box you're looking at.
+    pressTextBoxKey(activeEnvironment.scene, camera);
   });
   renderer.domElement.addEventListener('mousedown', (event) => {
     if (event.button === 0 && controls.isLocked) interaction.throwHeld(camera);

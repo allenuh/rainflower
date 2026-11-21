@@ -4,10 +4,14 @@ import { createPortalReveal } from '../portals/lifecycle';
 import { createWorld1 } from './world-1';
 import { createWorld2 } from './world-2';
 import { createEnvironment } from './environment';
+import { loadTextBoxIcon } from '../ui/text-box';
+import lightbulbUrl from '../assets/ui/light-bulb.png?url';
 
 export type { Environment } from './environment';
 
 export async function createEnvironments() {
+  // Text boxes are painted once when created, so their icon must load first.
+  await loadTextBoxIcon(lightbulbUrl);
   const physics1 = await createPhysics();
   const physics2 = await createPhysics();
   const checkerboard = createWorld1(physics1);
