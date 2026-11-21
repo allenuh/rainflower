@@ -49,8 +49,23 @@ export interface TextBoxView {
   texture: Texture | null;
   width: number;
   height: number;
-  /** Redraws an animated view (one with obfuscated text) into its texture's canvas. */
-  repaint?: () => void;
+  /** Redraws the view into its texture's canvas, with its text scrambled or not. */
+  paint?: (scramble: boolean) => void;
+  /** Has obfuscated text, so it keeps re-scrambling even when the rest isn't. */
+  animated?: boolean;
+  /** Whether it was last painted scrambled. */
+  scrambled?: boolean;
+}
+
+// Set by obfuscateAllTextBoxes: every balloon's text is scrambled.
+let obfuscateAll = false;
+
+/**
+ * Scramble the text of every text box, closed or open, from now on (or stop,
+ * with false). Page counts and buttons stay readable.
+ */
+export function obfuscateAllTextBoxes(on = true) {
+  obfuscateAll = on;
 }
 
 /** A balloon's reading state, kept on its mesh as `userData.textBox`. */
@@ -202,7 +217,11 @@ function buildTextBox(
   pickDeck?: (count: number, previous: number) => number,
 ) {
   const unitsPerPixel = width / layout.width;
-  const toView = ({ canvas, repaint }: { canvas: HTMLCanvasElement; repaint?: () => void }): TextBoxView => {
+  const toView = ({ canvas, paint, animated }: {
+    canvas: HTMLCanvasElement;
+    paint: (scramble: boolean) => void;
+    animated: boolean;
+  }): TextBoxView => {
     const texture = new CanvasTexture(canvas);
     texture.colorSpace = SRGBColorSpace;
     texture.anisotropy = 8; // Clamped to what the GPU supports.
@@ -210,10 +229,12 @@ function buildTextBox(
       texture,
       width: canvas.width / resolution * unitsPerPixel,
       height: canvas.height / resolution * unitsPerPixel,
-      repaint,
+      paint,
+      animated,
+      scrambled: false,
     };
   };
-  const closed = toView({ canvas: drawClosedBalloon(title, pointer) });
+  const closed = toView(drawClosedBalloon(title, pointer));
   const decks = bodies.map((body) => {
     const pages = paginate(body);
     return pages.map((page, index) => toView(drawPage(title, page, index, pages.length, pointer)));
@@ -307,12 +328,18 @@ export function anchorTextBox(
     if (distance > showRange) page = -1; // Walking away closes it.
 
     const view = currentView();
-    // Re-scramble obfuscated text at a steady rate while it's being looked at.
-    const now = performance.now();
-    if (view.repaint && view.texture && now - lastRepaint >= repaintInterval) {
-      view.repaint();
-      view.texture.needsUpdate = true;
-      lastRepaint = now;
+    // Scrambled text re-scrambles at a steady rate while it's on screen.
+    // Views only repaint when they need to: never for plain static text.
+    if (view.paint && view.texture) {
+      const now = performance.now();
+      const animating = obfuscateAll || view.animated;
+      const stale = view.scrambled !== obfuscateAll;
+      if (stale || (animating && now - lastRepaint >= repaintInterval)) {
+        view.paint(obfuscateAll);
+        view.scrambled = obfuscateAll;
+        view.texture.needsUpdate = true;
+        lastRepaint = now;
+      }
     }
     mesh.material.map = view.texture;
     tip.copy(anchor).y += lift;
@@ -373,15 +400,11 @@ export function pressTextBoxKey(scene: Object3D, camera: Camera) {
 type Measure = (text: string) => number;
 type LaidOutParagraph = {
   height: number;
-  lines: {
-    text: string;
-    font: string;
-    y: number;
-    /** For obfuscated lines: each non-space character's position and look-alikes. */
-    glyphs?: { x: number; candidates: string[] }[];
-  }[];
+  lines: { text: string; font: string; y: number }[];
   isCode: boolean;
   color: string;
+  /** Always drawn scrambled. */
+  obfuscated: boolean;
 };
 
 function createMeasure(font: string): Measure {
@@ -403,23 +426,56 @@ function layOutParagraph(
       lines.push({ text, font: fonts.code, y });
       y += layout.codeLineHeight;
     }
-    return { height: y + layout.codePadding, lines, isCode: true, color: colors.ink };
+    return {
+      height: y + layout.codePadding, lines, isCode: true, color: colors.ink, obfuscated: false,
+    };
   }
   const { text: prose, color = colors.ink, obfuscated = false } = typeof paragraph === 'string'
     ? { text: paragraph }
     : paragraph;
-  const pool = obfuscated ? measureGlyphs(measureBody) : [];
   for (const text of wrapText(prose, layout.width - layout.padding * 2, measureBody)) {
-    const glyphs = obfuscated ? layOutGlyphs(text, measureBody, pool) : undefined;
-    lines.push({ text, font: fonts.body, y, glyphs });
+    lines.push({ text, font: fonts.body, y });
     y += layout.lineHeight;
   }
-  return { height: y, lines, isCode: false, color };
+  return { height: y, lines, isCode: false, color, obfuscated };
 }
 
-/** Every obfuscation glyph with its width in the body font. */
-function measureGlyphs(measure: Measure) {
-  return [...obfuscationGlyphs].map((glyph) => ({ glyph, width: measure(glyph) }));
+type GlyphSlot = { x: number; candidates: string[] };
+// Scrambling layouts, computed the first time each is needed: the obfuscation
+// glyphs' widths per font, and each scrambled string's slots per font.
+const glyphPools = new Map<string, { glyph: string; width: number }[]>();
+const scrambleSlots = new Map<string, GlyphSlot[]>();
+
+/**
+ * context.fillText, or with `scramble`, the same text with every non-space
+ * character swapped for a random glyph of about its width. Left-aligned only.
+ */
+function fillText(
+  context: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  scramble: boolean,
+) {
+  if (!scramble) {
+    context.fillText(text, x, y);
+    return;
+  }
+  const key = `${context.font}\n${text}`;
+  let slots = scrambleSlots.get(key);
+  if (!slots) {
+    const measure = (value: string) => context.measureText(value).width;
+    let pool = glyphPools.get(context.font);
+    if (!pool) {
+      pool = [...obfuscationGlyphs].map((glyph) => ({ glyph, width: measure(glyph) }));
+      glyphPools.set(context.font, pool);
+    }
+    slots = layOutGlyphs(text, measure, pool);
+    scrambleSlots.set(key, slots);
+  }
+  for (const { x: offset, candidates } of slots) {
+    context.fillText(candidates[Math.floor(Math.random() * candidates.length)], x + offset, y);
+  }
 }
 
 /**
@@ -427,7 +483,7 @@ function measureGlyphs(measure: Measure) {
  * same width (within a pixel, or else the closest few) it may turn into.
  */
 function layOutGlyphs(line: string, measure: Measure, pool: { glyph: string; width: number }[]) {
-  const glyphs: { x: number; candidates: string[] }[] = [];
+  const glyphs: GlyphSlot[] = [];
   [...line].forEach((character, index) => {
     if (character === ' ') return;
     const width = measure(character);
@@ -496,7 +552,12 @@ function createBalloonCanvas(width: number, contentHeight: number, pointer: 'dow
   return { canvas, context, contentTop: top + layout.padding, paintBalloon };
 }
 
-function drawTitle(context: CanvasRenderingContext2D, title: string, top: number) {
+function drawTitle(
+  context: CanvasRenderingContext2D,
+  title: string,
+  top: number,
+  scramble: boolean,
+) {
   if (icon) {
     drawPixelIcon(context, icon, layout.padding, top);
   } else {
@@ -507,10 +568,13 @@ function drawTitle(context: CanvasRenderingContext2D, title: string, top: number
   context.fillStyle = colors.ink;
   context.textBaseline = 'middle';
   context.font = fonts.title;
-  context.fillText(title, layout.padding + layout.iconSize + 6, top + layout.titleHeight / 2);
+  fillText(context, title, layout.padding + layout.iconSize + 6, top + layout.titleHeight / 2, scramble);
 }
 
-/** The closed balloon: just the title and a hint to press F. */
+/**
+ * The closed balloon: just the title and a hint to press F. paint(scramble)
+ * redraws it, with its text scrambled or not.
+ */
 function drawClosedBalloon(title: string, pointer: 'down' | 'up') {
   const hint = 'Press F to read';
   const titleWidth = layout.iconSize + 6 + createMeasure(fonts.title)(title);
@@ -521,18 +585,23 @@ function drawClosedBalloon(title: string, pointer: 'down' | 'up') {
     layout.titleHeight + layout.hintHeight,
     pointer,
   );
-  paintBalloon();
-  drawTitle(context, title, contentTop);
-  context.fillStyle = colors.hint;
-  context.textBaseline = 'top';
-  context.font = fonts.hint;
-  context.fillText(hint, layout.padding, contentTop + layout.titleHeight + 1);
-  return canvas;
+  const paint = (scramble: boolean) => {
+    paintBalloon();
+    drawTitle(context, title, contentTop, scramble);
+    context.fillStyle = colors.hint;
+    context.textBaseline = 'top';
+    context.font = fonts.hint;
+    fillText(context, hint, layout.padding, contentTop + layout.titleHeight + 1, scramble);
+  };
+  paint(false);
+  return { canvas, paint, animated: false };
 }
 
 /**
  * One open page: title, body, then a page count and a Next or Close button.
- * A page with obfuscated text also returns repaint(), which re-scrambles it.
+ * paint(scramble) redraws it, with its text scrambled or not; obfuscated
+ * paragraphs are always scrambled, and a page with any is `animated`. The
+ * page count and button stay readable.
  */
 function drawPage(
   title: string,
@@ -553,9 +622,9 @@ function drawPage(
     pointer,
   );
 
-  const paint = () => {
+  const paint = (scramble: boolean) => {
     paintBalloon();
-    drawTitle(context, title, contentTop);
+    drawTitle(context, title, contentTop, scramble);
 
     let y = contentTop + bodyTop;
     for (const paragraph of paragraphs) {
@@ -565,14 +634,7 @@ function drawPage(
       for (const line of paragraph.lines) {
         context.font = line.font;
         const left = layout.padding + (paragraph.isCode ? 8 : 0);
-        if (line.glyphs) {
-          for (const { x, candidates } of line.glyphs) {
-            const glyph = candidates[Math.floor(Math.random() * candidates.length)];
-            context.fillText(glyph, left + x, y + line.y);
-          }
-        } else {
-          context.fillText(line.text, left, y + line.y);
-        }
+        fillText(context, line.text, left, y + line.y, scramble || paragraph.obfuscated);
       }
       y += paragraph.height + layout.paragraphGap;
     }
@@ -586,9 +648,8 @@ function drawPage(
     }
     drawButton(context, index + 1 < pageCount ? 'Next (F)' : 'Close (F)', buttonTop);
   };
-  paint();
-  const animated = paragraphs.some((paragraph) => paragraph.lines.some((line) => line.glyphs));
-  return { canvas, repaint: animated ? paint : undefined };
+  paint(false);
+  return { canvas, paint, animated: paragraphs.some((paragraph) => paragraph.obfuscated) };
 }
 
 /** Code sits in a white, sunken panel, like samples in old help files. */

@@ -6,7 +6,7 @@ import {
 } from 'three';
 import { setBoundsWithoutTextBoxes } from '../src/player/prop-interaction.ts';
 import {
-  anchorTextBox, findAimedTextBox, pickAnotherIndex, pressTextBoxKey, wrapText,
+  anchorTextBox, findAimedTextBox, obfuscateAllTextBoxes, pickAnotherIndex, pressTextBoxKey, wrapText,
 } from '../src/ui/text-box.ts';
 
 // One unit per character keeps the expected widths easy to read.
@@ -209,4 +209,41 @@ test('a random text box opens the entry it picks, and pages through that entry',
   handle.advance();
   assert.equal(handle.page, -1);
   assert.deepEqual(picked, [-1, 0]);
+});
+
+test('text boxes repaint only once obfuscated, at a throttled rate, and back once restored', () => {
+  const painted = [];
+  const view = (height) => ({
+    texture: { needsUpdate: false },
+    width: 6,
+    height,
+    paint: (scramble) => painted.push(scramble),
+    animated: false,
+    scrambled: false,
+  });
+  const prop = new Mesh(new BoxGeometry(1, 1, 1));
+  const balloon = new Mesh(new PlaneGeometry(1, 1).translate(0, 0.5, 0), new MeshBasicMaterial());
+  anchorTextBox(balloon, { lift: 4, pointer: 'down', closed: view(1), decks: [[view(3)]] });
+  prop.add(balloon);
+  prop.updateMatrixWorld();
+  const camera = cameraLookingAt(new Vector3(0, 5, 15), new Vector3());
+  const render = () => balloon.onBeforeRender(null, null, camera);
+
+  try {
+    render();
+    render();
+    assert.deepEqual(painted, [], 'plain text is never repainted');
+
+    obfuscateAllTextBoxes();
+    render();
+    render(); // Same moment: throttled.
+    assert.deepEqual(painted, [true]);
+
+    obfuscateAllTextBoxes(false);
+    render();
+    render();
+    assert.deepEqual(painted, [true, false], 'restored once, then left alone');
+  } finally {
+    obfuscateAllTextBoxes(false);
+  }
 });

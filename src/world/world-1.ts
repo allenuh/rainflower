@@ -9,9 +9,12 @@ import { disposeObjectResources } from './environment';
 import { createVanishingProps } from './vanishing-props';
 import { createVanishingSequence } from './vanishing-sequence';
 import { addTeapotNote, addWorld1Notes } from './world-1-notes';
+import { obfuscateAllTextBoxes } from '../ui/text-box';
 
 // Sphere respawns that arm the first stage; each later stage needs one more.
 const firstVanishingRespawns = 5;
+// Sphere respawns after which every text box's writing scrambles for good.
+const obfuscationRespawns = 5;
 // The cylinder sits beside the spawn point, so its absence is felt last.
 const vanishingStages = ['cube', 'torus', 'cone', 'diamond', 'teapot', 'cylinder'] as const;
 
@@ -47,6 +50,10 @@ export function createWorld1(physics: Physics) {
     anchor: sphere,
     stages: vanishingStages,
     firstRespawns: firstVanishingRespawns,
+  });
+  let sphereRespawns = 0;
+  physics.onRespawn((mesh) => {
+    if (mesh === sphere && ++sphereRespawns === obfuscationRespawns) obfuscateAllTextBoxes();
   });
   // Props outside the sequence, like the magenta sphere, never vanish.
   for (const name of vanishingStages) {
