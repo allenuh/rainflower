@@ -150,11 +150,20 @@ test('only one text box is open at a time, and F aimed at nothing closes it', ()
   const atRight = cameraLookingAt(new Vector3(6, 5, 12), new Vector3(6, 5, 0));
   const atNothing = cameraLookingAt(new Vector3(0, 5, 12), new Vector3(0, 30, 12));
 
-  pressTextBoxKey(scene, atLeft);
+  assert.equal(pressTextBoxKey(scene, atLeft), true);
   assert.equal(handleOf(left).page, 0);
-  pressTextBoxKey(scene, atRight);
+  assert.equal(pressTextBoxKey(scene, atRight), true);
   assert.equal(handleOf(left).page, -1);
   assert.equal(handleOf(right).page, 0);
-  pressTextBoxKey(scene, atNothing);
+  assert.equal(pressTextBoxKey(scene, atNothing), true);
+  assert.equal(handleOf(right).page, -1);
+});
+
+test('F reports no interaction when aimed at nothing with nothing open', () => {
+  const { scene, left, right } = propsScene();
+  const atNothing = cameraLookingAt(new Vector3(0, 5, 12), new Vector3(0, 30, 12));
+
+  assert.equal(pressTextBoxKey(scene, atNothing), false);
+  assert.equal(handleOf(left).page, -1);
   assert.equal(handleOf(right).page, -1);
 });

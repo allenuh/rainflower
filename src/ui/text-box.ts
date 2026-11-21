@@ -271,14 +271,22 @@ export function findAimedTextBox(scene: Object3D, camera: Camera) {
 /**
  * F: open the aimed-at balloon, or turn its page, or close it after the last
  * page. Any other open balloon closes, so only one is open at a time.
+ * Returns whether any balloon opened, turned a page or closed.
  */
 export function pressTextBoxKey(scene: Object3D, camera: Camera) {
   const aimed = findAimedTextBox(scene, camera);
+  let changed = false;
   scene.traverse((object) => {
     const handle = object.userData.textBox as TextBoxHandle | undefined;
-    if (handle && handle !== aimed) handle.close();
+    if (!handle || handle === aimed || handle.page < 0) return;
+    handle.close();
+    changed = true;
   });
-  aimed?.advance();
+  if (aimed) {
+    aimed.advance();
+    changed = true;
+  }
+  return changed;
 }
 
 type Measure = (text: string) => number;
