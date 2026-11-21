@@ -15,8 +15,9 @@ export function createWorld3(physics: Physics) {
   scene.add(new HemisphereLight('#8090c0', '#101018', 0.25));
 
   // A flat, unlit dark yellow plain that dims with distance toward the horizon.
+  const plainSize = 5000;
   const ground = new Mesh(
-    new PlaneGeometry(2000, 2000),
+    new PlaneGeometry(plainSize, plainSize),
     new ShaderMaterial({
       vertexShader: groundVertexShader,
       fragmentShader: groundFragmentShader,
@@ -29,10 +30,19 @@ export function createWorld3(physics: Physics) {
     }),
   );
   ground.rotation.x = -Math.PI / 2;
+  // The visible plain re-centers under whichever camera draws it (main or
+  // portal view), so its edge never comes into view. Its flat color is shaded
+  // only by distance from the camera, which makes the move invisible.
+  ground.frustumCulled = false;
+  ground.onBeforeRender = (_renderer, _scene, camera) => {
+    ground.position.x = camera.matrixWorld.elements[12];
+    ground.position.z = camera.matrixWorld.elements[14];
+    ground.updateMatrixWorld();
+  };
   scene.add(ground);
-  const { width, height } = ground.geometry.parameters;
-  physics.addFloor(width, height);
-  physics.addPlayerBounds(width, height);
+  // The floor collider and player walls stay put at the plain's full size.
+  physics.addFloor(plainSize, plainSize);
+  physics.addPlayerBounds(plainSize, plainSize);
 
   // Floating at eye height far out on the plain. It casts no light.
   const sphereRadius = 2.5;
