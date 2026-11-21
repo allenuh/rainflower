@@ -8,6 +8,7 @@ import { createTeapot } from './teapot';
 import { disposeObjectResources } from './environment';
 import { createVanishingProps } from './vanishing-props';
 import { createVanishingSequence } from './vanishing-sequence';
+import { addTeapotNote, addWorld1Notes } from './world-1-notes';
 
 // Sphere respawns that arm the first stage; each later stage needs one more.
 const firstVanishingRespawns = 5;
@@ -37,6 +38,7 @@ export function createWorld1(physics: Physics) {
   physics.addPlayerBounds(width, height);
   const primitives = createPrimitives(physics);
   scene.add(primitives.group);
+  addWorld1Notes(scene, primitives.props);
   // Armed props are removed for good the first frame no view can see them.
   // Each respawn of the green sphere arms the next prop in `vanishingStages`.
   const { sphere } = primitives.props;
@@ -55,7 +57,10 @@ export function createWorld1(physics: Physics) {
   const ready = createTeapot(physics, loadingManager)
     .then((teapot) => {
       if (teapot && physics.disposed) disposeObjectResources(teapot);
-      else if (teapot) scene.add(teapot);
+      else if (teapot) {
+        addTeapotNote(teapot);
+        scene.add(teapot);
+      }
       sequence.provide('teapot', teapot);
     })
     .catch((error) => {

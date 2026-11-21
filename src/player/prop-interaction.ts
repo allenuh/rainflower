@@ -1,10 +1,23 @@
 import RAPIER from '@dimforge/rapier3d-compat';
-import { Box3, Quaternion, Vector3, type Camera } from 'three';
+import { Box3, Quaternion, Vector3, type Camera, type Object3D } from 'three';
 import type { Physics } from '../physics/world';
 
 const pickupRange = 10;
 const throwSpeed = 42;
 type Prop = NonNullable<ReturnType<Physics['findProp']>>;
+
+/**
+ * Like Box3.setFromObject, but leaves out text boxes (children flagged
+ * `userData.textBox`, see ui/text-box.ts), so a prop's size and center don't
+ * change when it has one.
+ */
+export function setBoundsWithoutTextBoxes(target: Box3, object: Object3D, precise = false) {
+  const boxes = object.children.filter((child) => child.userData.textBox);
+  boxes.forEach((box) => object.remove(box));
+  target.setFromObject(object, precise);
+  boxes.forEach((box) => object.add(box));
+  return target;
+}
 
 export function createPropInteraction(physics: Physics, playerBody: RAPIER.RigidBody) {
   const { world } = physics;
@@ -39,7 +52,7 @@ export function createPropInteraction(physics: Physics, playerBody: RAPIER.Rigid
 
   function pickUp(prop: Prop) {
     const { body, mesh } = prop;
-    const bounds = new Box3().setFromObject(mesh, true);
+    const bounds = setBoundsWithoutTextBoxes(new Box3(), mesh, true);
     const radius = bounds.getSize(new Vector3()).length() / 2;
     const bodyRotation = new Quaternion().copy(body.rotation());
     const centerOffset = bounds.getCenter(new Vector3()).sub(body.translation())
