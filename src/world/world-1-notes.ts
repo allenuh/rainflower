@@ -10,29 +10,50 @@ import {
 const phongShading: TextBoxContent = {
   title: 'Phong shading',
   body: [
-    'These props are lit with the Phong reflection model (Bui Tuong Phong, '
-      + 'University of Utah, 1975). For every pixel, three terms are added:',
-    'Ambient: a flat base, so nothing is pitch black. '
-      + 'Diffuse: max(N·L, 0), brightest where the surface faces the light '
-      + '(Lambert\'s law). Specular: (R·V)^shininess, the highlight that '
-      + 'slides across the surface as you move.',
-    'three.js uses Blinn\'s faster version, (N·H)^shininess, with the half '
-      + 'vector H between the light and the eye. Shininess 100 keeps the '
-      + 'highlight small and sharp.',
+    'These props are lit with the Phong reflection model, from Bui Tuong '
+      + 'Phong\'s 1975 work at the University of Utah.',
+    'It describes light at each point with a few unit vectors: N, the surface '
+      + 'normal, pointing straight out; L, toward the light; V, toward your '
+      + 'eye; and R, the direction L bounces off in, mirrored around N.',
+    pageBreak,
+    'The colour is three terms added together:',
+    'Ambient: a flat base, so nothing is pitch black.',
+    'Diffuse: max(N·L, 0). Brightest where the surface faces the light, '
+      + 'fading to dark at 90° (Lambert\'s law).',
+    'Specular: (R·V)^shininess. The highlight, brightest where light bounces '
+      + 'straight into your eye, which is why it slides as you move.',
+    pageBreak,
+    'Phong\'s second idea was to blend normals across each triangle rather '
+      + 'than colours, as Gouraud shading did. That keeps highlights round '
+      + 'instead of breaking into facets.',
+    'three.js uses Jim Blinn\'s 1977 variant, (N·H)^shininess, where H is the '
+      + 'half vector between L and V. These props use shininess 100, for a '
+      + 'small, sharp highlight.',
   ],
 };
 
 const utahTeapot: TextBoxContent = {
   title: 'The Utah teapot',
   body: [
-    'In 1975, Martin Newell at the University of Utah wanted a test object '
-      + 'more interesting than cubes and spheres. He sketched his family\'s '
-      + 'Melitta teapot on graph paper and described it with bicubic Bézier '
-      + 'patches: smooth curved surfaces, each shaped by 16 control points.',
-    'He shared the data, and it became an icon of computer graphics, turning '
-      + 'up in Toy Story and The Simpsons. The real teapot is at the Computer '
-      + 'History Museum. This one is a triangle mesh loaded from an OBJ file. '
-      + 'While a normal teapot pours tea, this one pours dirty soda.',
+    'In 1975, Martin Newell, a researcher at the University of Utah, needed a '
+      + 'test object more interesting than cubes and spheres. Over tea, his '
+      + 'wife Sandra suggested the tea set in front of them.',
+    'He sketched their Melitta teapot on graph paper and described it with '
+      + 'bicubic Bézier patches: smooth curved surfaces, each shaped by a 4×4 '
+      + 'grid of control points.',
+    pageBreak,
+    'Why a teapot? It has a bit of everything: smooth curves, saddle-shaped '
+      + 'areas, a handle with a hole through it, and parts that cast shadows '
+      + 'onto itself. Yet it takes only a small amount of data.',
+    'Newell shared that data, and it spread from lab to lab. Most digital '
+      + 'teapots are squatter than the real one, usually put down to being '
+      + 'stretched for a display with non-square pixels.',
+    pageBreak,
+    'It became the mascot of computer graphics, with cameos in Toy Story and '
+      + 'The Simpsons. The real teapot is at the Computer History Museum in '
+      + 'California.',
+    'This one is a triangle mesh loaded from an OBJ file. While a normal '
+      + 'teapot pours tea, this one pours dirty soda.',
   ],
 };
 
@@ -248,7 +269,7 @@ const lessons: TextBoxParagraph[][] = [
   ],
   [
     warning('He is disturbed.'),
-    warning('This checkerboard only goes out 50 units out every direction...gravity '
+    warning('This checkerboard only goes out 50 units in every direction...gravity '
       + 'will handle the rest. Throw it. Throw it again. Keep throwing and '
       + 'don\'t look back.'),
   ],
