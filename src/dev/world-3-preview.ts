@@ -87,6 +87,12 @@ async function start() {
     uniforms.uDebugCells.value = uniforms.uDebugCells.value > 0.5 ? 0 : 1;
   });
 
+  // Pixel loupe: crops of the real canvas, magnified without smoothing.
+  const captures: { label: string; image: HTMLCanvasElement }[] = [];
+  const loupe = document.createElement('canvas');
+  loupe.style.cssText = 'position:fixed;inset:0;margin:auto;display:none;image-rendering:pixelated;';
+  document.body.appendChild(loupe);
+
   // Screenshot helpers: aim without pointer lock and tweak uniforms live.
   (window as unknown as { __preview: unknown }).__preview = {
     camera,
@@ -98,6 +104,45 @@ async function start() {
         0,
         'YXZ',
       );
+    },
+    /** Render now and keep a crop of the canvas, in canvas pixels. */
+    capture(label: string, x: number, y: number, width: number, height: number) {
+      renderer.render(world.scene, camera);
+      const image = document.createElement('canvas');
+      image.width = width;
+      image.height = height;
+      image.getContext('2d')!.drawImage(renderer.domElement, x, y, width, height, 0, 0, width, height);
+      captures.push({ label, image });
+    },
+    /** Show the kept crops side by side, magnified `scale` times; none hides. */
+    showCaptures(scale = 6) {
+      if (!captures.length) {
+        loupe.style.display = 'none';
+        return;
+      }
+      const gap = 8;
+      const labelHeight = 18;
+      const width = captures.reduce((sum, { image }) => sum + image.width * scale + gap, gap);
+      const height = Math.max(...captures.map(({ image }) => image.height)) * scale + labelHeight + gap * 2;
+      loupe.width = width;
+      loupe.height = height;
+      const context = loupe.getContext('2d')!;
+      context.imageSmoothingEnabled = false;
+      context.fillStyle = '#333';
+      context.fillRect(0, 0, width, height);
+      context.fillStyle = '#fff';
+      context.font = '13px monospace';
+      let left = gap;
+      for (const { label, image } of captures) {
+        context.fillText(label, left, gap + 12);
+        context.drawImage(image, left, gap + labelHeight, image.width * scale, image.height * scale);
+        left += image.width * scale + gap;
+      }
+      loupe.style.display = 'block';
+    },
+    clearCaptures() {
+      captures.length = 0;
+      loupe.style.display = 'none';
     },
   };
 
