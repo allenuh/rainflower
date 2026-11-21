@@ -164,6 +164,11 @@ const funFacts: TextBoxParagraph[][] = [
   ],
 ];
 
+/** A paragraph in warning red, dark enough to read on the balloon's yellow. */
+function warning(text: string): TextBoxParagraph {
+  return { text, color: '#c00000' };
+}
+
 // The magenta sphere's lessons. The pipeline comes first, as pages in order;
 // after that, entries (including a few warnings) come up at random.
 const graphicsPipeline: TextBoxParagraph[] = [
@@ -235,17 +240,17 @@ const lessons: TextBoxParagraph[][] = [
   ],
   // Warnings about the green sphere, nudging the player to throw it off the edge.
   [
-    'Every scene hides an evil. Look for the other object that never stops '
-      + 'rolling.',
+    warning('Every scene hides an evil. Look for the other object that never stops '
+      + 'rolling.'),
   ],
   [
-    'Rendering fact: our eyes are most sensitive to green.',
+    warning('Rendering fact: our eyes are most sensitive to green.'),
   ],
   [
-    'He is disturbed.',
-    'This checkerboard only goes out 50 units out every direction...gravity '
+    warning('He is disturbed.'),
+    warning('This checkerboard only goes out 50 units out every direction...gravity '
       + 'will handle the rest. Throw it. Throw it again. Keep throwing and '
-      + 'don\'t look back.',
+      + 'don\'t look back.'),
   ],
 ];
 

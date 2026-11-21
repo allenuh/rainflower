@@ -14,8 +14,15 @@ import {
   type Texture,
 } from 'three';
 
-/** A paragraph of prose, or a block of code drawn line by line in monospace. */
-export type TextBoxParagraph = string | { code: string } | typeof pageBreak;
+/**
+ * A paragraph of prose, prose in a color (`{ text, color }`, any CSS color),
+ * a block of code drawn line by line in monospace, or a page break.
+ */
+export type TextBoxParagraph =
+  | string
+  | { text: string; color: string }
+  | { code: string }
+  | typeof pageBreak;
 
 /** Put in a body to start a new page there, rather than where the text fills one. */
 export const pageBreak = { pageBreak: true } as const;
@@ -338,6 +345,7 @@ type LaidOutParagraph = {
   height: number;
   lines: { text: string; font: string; y: number }[];
   isCode: boolean;
+  color: string;
 };
 
 function createMeasure(font: string): Measure {
@@ -353,19 +361,22 @@ function layOutParagraph(
 ): LaidOutParagraph {
   const lines: LaidOutParagraph['lines'] = [];
   let y = 0;
-  if (typeof paragraph === 'string') {
-    for (const text of wrapText(paragraph, layout.width - layout.padding * 2, measureBody)) {
-      lines.push({ text, font: fonts.body, y });
-      y += layout.lineHeight;
+  if (typeof paragraph === 'object' && 'code' in paragraph) {
+    y += layout.codePadding;
+    for (const text of paragraph.code.split('\n')) {
+      lines.push({ text, font: fonts.code, y });
+      y += layout.codeLineHeight;
     }
-    return { height: y, lines, isCode: false };
+    return { height: y + layout.codePadding, lines, isCode: true, color: colors.ink };
   }
-  y += layout.codePadding;
-  for (const text of paragraph.code.split('\n')) {
-    lines.push({ text, font: fonts.code, y });
-    y += layout.codeLineHeight;
+  const { text: prose, color } = typeof paragraph === 'string'
+    ? { text: paragraph, color: colors.ink }
+    : paragraph;
+  for (const text of wrapText(prose, layout.width - layout.padding * 2, measureBody)) {
+    lines.push({ text, font: fonts.body, y });
+    y += layout.lineHeight;
   }
-  return { height: y + layout.codePadding, lines, isCode: true };
+  return { height: y, lines, isCode: false, color };
 }
 
 /** Group paragraphs into pages that each fit within layout.maxPageBody. */
@@ -470,7 +481,7 @@ function drawPage(
   let y = contentTop + bodyTop;
   for (const paragraph of paragraphs) {
     if (paragraph.isCode) drawCodePanel(context, y, paragraph.height);
-    context.fillStyle = colors.ink;
+    context.fillStyle = paragraph.color;
     context.textBaseline = 'top';
     for (const line of paragraph.lines) {
       context.font = line.font;
