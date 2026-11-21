@@ -11,6 +11,10 @@ export interface PortalEndpoint {
   height: number;
   readonly closed: boolean;
   close: () => void;
+  // A hidden endpoint is drawn and traversed as if closed, but can be revealed.
+  readonly hidden: boolean;
+  hide: () => void;
+  reveal: () => void;
 }
 
 export interface PortalPair {
@@ -32,12 +36,22 @@ export function createPortalEndpoint(
   const anchor = new Object3D();
   environment.scene.add(anchor);
   let closed = false;
+  let hidden = false;
   return {
     environment, anchor, width, height,
     get closed() { return closed; },
     close() {
       closed = true;
       anchor.visible = false;
+    },
+    get hidden() { return hidden; },
+    hide() {
+      hidden = true;
+      anchor.visible = false;
+    },
+    reveal() {
+      hidden = false;
+      anchor.visible = !closed;
     },
   };
 }

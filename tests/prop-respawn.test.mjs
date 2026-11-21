@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BoxGeometry, Mesh, Quaternion, SphereGeometry, Vector3 } from 'three';
+import RAPIER from '@dimforge/rapier3d-compat';
 import { createPhysics } from '../src/physics/world.ts';
 import { createPrimitiveColliders } from '../src/physics/colliders.ts';
 
@@ -74,3 +75,29 @@ test('respawned props drop back onto the floor and settle', async () => {
   }
 });
 
+
+test('respawn listeners hear fallen props and forced respawns, but not held props', async () => {
+  const physics = await createPhysics();
+  try {
+    const fallen = addProp(physics, new SphereGeometry(1), new Vector3(60, -101, 0));
+    const held = addProp(physics, new SphereGeometry(1), new Vector3(-20, 5, 0));
+    const heard = [];
+    const unsubscribe = physics.onRespawn((mesh) => heard.push(mesh));
+    physics.update(1 / 60);
+    assert.deepEqual(heard, [fallen.mesh]);
+
+    assert.equal(physics.respawn(fallen.mesh), true);
+    assert.deepEqual({ ...fallen.body.translation() }, { x: 0, y: 40, z: 0 });
+    assert.deepEqual(heard, [fallen.mesh, fallen.mesh]);
+
+    held.body.setBodyType(RAPIER.RigidBodyType.KinematicPositionBased, true);
+    assert.equal(physics.respawn(held.mesh), false);
+    assert.equal(heard.length, 2);
+
+    unsubscribe();
+    physics.respawn(fallen.mesh);
+    assert.equal(heard.length, 2);
+  } finally {
+    physics.dispose();
+  }
+});

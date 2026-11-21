@@ -28,6 +28,7 @@ export async function createPhysics() {
   const rotation = new Quaternion();
   const currentRotation = new Quaternion();
   const parentRotation = new Quaternion();
+  const respawnListeners = new Set<(mesh: Object3D) => void>();
 
   function captureTransforms() {
     for (const object of objects) {
@@ -41,7 +42,10 @@ export async function createPhysics() {
     if (respawnCooldown > 0) return;
     const object = objects.find(({ body }) => body.isDynamic() && body.translation().y < respawnBelowY);
     if (!object) return;
+    respawnObject(object);
+  }
 
+  function respawnObject(object: (typeof objects)[number]) {
     object.body.setTranslation(respawnPosition, true);
     object.body.setRotation(object.initialRotation, true);
     object.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
@@ -52,6 +56,7 @@ export async function createPhysics() {
     world.propagateModifiedBodyPositionsToColliders();
     // Share the drop point without spawning multiple overlapping bodies.
     respawnCooldown = respawnInterval;
+    for (const listener of respawnListeners) listener(object.mesh);
   }
 
   return {
@@ -111,6 +116,21 @@ export async function createPhysics() {
         initialRotation: rotation.clone(),
       });
       return body;
+    },
+
+    /** Listen for props sent back to the drop point; returns an unsubscribe. */
+    onRespawn(listener: (mesh: Object3D) => void) {
+      respawnListeners.add(listener);
+      return () => { respawnListeners.delete(listener); };
+    },
+
+    /** Send a dynamic prop to the drop point now, as if it had fallen. */
+    respawn(mesh: Object3D) {
+      if (disposed) return false;
+      const object = objects.find((candidate) => candidate.mesh === mesh);
+      if (!object || !object.body.isDynamic()) return false;
+      respawnObject(object);
+      return true;
     },
 
     /** Remove a prop's body (and its colliders) from the simulation. */
@@ -181,6 +201,7 @@ export async function createPhysics() {
       disposed = true;
       accumulator = 0;
       objects.length = 0;
+      respawnListeners.clear();
       world.free();
     },
   };

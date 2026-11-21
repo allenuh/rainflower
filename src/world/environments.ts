@@ -1,5 +1,6 @@
 import { createPhysics } from '../physics/world';
 import { createPortalEndpoint, type PortalPair } from '../portals/portal';
+import { createPortalReveal } from '../portals/lifecycle';
 import { createWorld1 } from './world-1';
 import { createWorld2 } from './world-2';
 import { createEnvironment } from './environment';
@@ -13,8 +14,15 @@ export async function createEnvironments() {
   const sunset = createWorld2(physics2);
 
   const world1 = createEnvironment(checkerboard.scene, physics1, {
-    observe: checkerboard.observe,
-    afterRender: checkerboard.afterRender,
+    observe(camera) {
+      checkerboard.observe(camera);
+      reveal.observe(camera);
+    },
+    afterRender() {
+      checkerboard.afterRender();
+      // Once world 1's props are all gone, open the portal while unseen.
+      reveal.afterRender(checkerboard.sequenceComplete);
+    },
     dispose: checkerboard.dispose,
   });
   const world2 = createEnvironment(sunset.scene, physics2, {
@@ -32,5 +40,16 @@ export async function createEnvironments() {
   b.anchor.rotation.y = Math.PI;
 
   const portalPair: PortalPair = { a, b };
-  return { world1, world2, portalPair, world1AssetsReady: checkerboard.ready };
+  // World 2 is loaded (and pre-warmed) up front, but unreachable until revealed.
+  a.hide();
+  b.hide();
+  const reveal = createPortalReveal(portalPair, a);
+
+  return {
+    world1,
+    world2,
+    portalPair,
+    world1AssetsReady: checkerboard.ready,
+    respawnSphere: checkerboard.respawnSphere,
+  };
 }

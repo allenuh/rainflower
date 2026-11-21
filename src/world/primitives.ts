@@ -42,9 +42,9 @@ export function createPrimitives(physics: Physics) {
     return mesh;
   }
 
-  addShape(new SphereGeometry(3.125, 32, 24), 0x15df35, -15, 3.125, -10);
-  addShape(new ConeGeometry(3.125, 6.25, 64), 0x153bff, 35, 3.125, -20);
-  addShape(new CylinderGeometry(2.5, 2.5, 4.5, 32), 0xff1818, 3, 2.25, -1);
+  const sphere = addShape(new SphereGeometry(3.125, 32, 24), 0x15df35, -15, 3.125, -10);
+  const cone = addShape(new ConeGeometry(3.125, 6.25, 64), 0x153bff, 35, 3.125, -20);
+  const cylinder = addShape(new CylinderGeometry(2.5, 2.5, 4.5, 32), 0xff1818, 3, 2.25, -1);
   const cube = addShape(new BoxGeometry(4.5, 4.5, 4.5), 0xb020ff, 6.5, 2.25, -26);
   cube.rotation.y = Math.PI / 6;
 
@@ -83,5 +83,5 @@ export function createPrimitives(physics: Physics) {
   shadows.receiveShadow = true;
   group.add(shadows);
 
-  return { group, props: shapes, keyLight };
+  return { group, props: { sphere, cone, cylinder, cube, torus: ring, diamond }, keyLight };
 }

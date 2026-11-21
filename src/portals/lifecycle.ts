@@ -46,6 +46,31 @@ export function clipPortalToFrustum(endpoint: PortalEndpoint, camera: Perspectiv
   return polygon;
 }
 
+/**
+ * The opening counterpart of closing: a hidden pair appears only on a frame
+ * where no view could see `entrance`. Call observe() with every camera that
+ * draws the entrance's world, then afterRender() once the frame is drawn.
+ */
+export function createPortalReveal(pair: PortalPair, entrance: PortalEndpoint) {
+  let seen = false;
+
+  return {
+    observe(viewer: PerspectiveCamera) {
+      if (!seen && entrance.hidden && clipPortalToFrustum(entrance, viewer).length > 0) seen = true;
+    },
+
+    // Returns true only on the frame that reveals the pair.
+    afterRender(ready: boolean): boolean {
+      const reveal = ready && !seen && entrance.hidden && !pair.a.closed && !pair.b.closed;
+      seen = false;
+      if (!reveal) return false;
+      pair.a.reveal();
+      pair.b.reveal();
+      return true;
+    },
+  };
+}
+
 export function createPortalLifecycle(pair: PortalPair) {
   let returnEntrance: PortalEndpoint | undefined;
 

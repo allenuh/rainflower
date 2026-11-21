@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BoxGeometry, Group, Mesh, MeshBasicMaterial, PerspectiveCamera, Scene, Vector3 } from 'three';
 import { createPortalEndpoint } from '../src/portals/portal.ts';
-import { createPortalLifecycle } from '../src/portals/lifecycle.ts';
+import { createPortalLifecycle, createPortalReveal } from '../src/portals/lifecycle.ts';
 import { createPortalCrossingDetector } from '../src/portals/crossing.ts';
 
 function fixture() {
@@ -118,4 +118,45 @@ test('a closed pair cannot produce crossings after detector resets or environmen
   detector.arriveThrough(b, new Vector3(0, 0, 1));
   assert.equal(detector.update(world2, new Vector3(0, 0, -1)), undefined);
   assert.equal(detector.update(world1, new Vector3(0, 0, 1)), undefined);
+});
+
+test('a hidden pair is neither visible nor traversable until revealed', () => {
+  const { a, b, pair } = fixture();
+  const detector = createPortalCrossingDetector(pair);
+  a.hide();
+  b.hide();
+  assert.equal(a.anchor.visible, false);
+  detector.reset(a.environment, new Vector3(0, 0, 1));
+  assert.equal(detector.update(a.environment, new Vector3(0, 0, -1)), undefined);
+  a.reveal();
+  b.reveal();
+  assert.equal(a.anchor.visible, true);
+  // The position recorded while hidden is behind the opening: no stale crossing.
+  assert.equal(detector.update(a.environment, new Vector3(0, 0, -2)), undefined);
+  assert.equal(detector.update(a.environment, new Vector3(0, 0, 1)), undefined);
+  assert.ok(detector.update(a.environment, new Vector3(0, 0, -1)));
+});
+
+test('a hidden pair is revealed only once ready and on a frame the entrance is unseen', () => {
+  const { a, b, pair, camera } = fixture();
+  a.hide();
+  b.hide();
+  const reveal = createPortalReveal(pair, a);
+
+  camera.rotation.y = Math.PI;
+  reveal.observe(camera);
+  assert.equal(reveal.afterRender(false), false, 'Not ready yet');
+
+  camera.rotation.y = 0;
+  reveal.observe(camera);
+  assert.equal(reveal.afterRender(true), false, 'Entrance is in view');
+  assert.equal(a.hidden, true);
+
+  camera.rotation.y = Math.PI;
+  reveal.observe(camera);
+  assert.equal(reveal.afterRender(true), true);
+  assert.equal(a.hidden, false);
+  assert.equal(b.hidden, false);
+  assert.equal(a.anchor.visible, true);
+  assert.equal(reveal.afterRender(true), false, 'Reveals once');
 });

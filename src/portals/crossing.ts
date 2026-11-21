@@ -47,7 +47,7 @@ export function createPortalCrossingDetector(pair: PortalPair) {
         : pair.b.environment === environment ? pair.b : undefined;
       let crossing: PortalCrossing | undefined;
 
-      if (source && !pair.a.closed && !pair.b.closed) {
+      if (source && !pair.a.closed && !pair.b.closed && !pair.a.hidden && !pair.b.hidden) {
         source.anchor.updateWorldMatrix(true, false);
         inverseAnchor.copy(source.anchor.matrixWorld).invert();
         previousLocal.copy(previousPosition).applyMatrix4(inverseAnchor);

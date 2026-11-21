@@ -171,7 +171,13 @@ export function createPortalRenderer(renderer: WebGLRenderer, pair: PortalPair) 
       const previousMipmapLevel = renderer.getActiveMipmapLevel();
       const linearProbe = new WebGLRenderTarget(1, 1);
       const pending: Promise<unknown>[] = [];
+      // compile() skips invisible objects, so show hidden (not closed) openings
+      // for the synchronous part, or their surface compiles on the reveal frame.
+      const anchors = [pair.a, pair.b].map(({ anchor }) => ({ anchor, visible: anchor.visible }));
       try {
+        for (const endpoint of [pair.a, pair.b]) {
+          if (endpoint.hidden && !endpoint.closed) endpoint.anchor.visible = true;
+        }
         for (const environment of new Set(environments)) {
           if (environment.disposed) continue;
           // compile() reads the active target synchronously, so switching
@@ -183,6 +189,7 @@ export function createPortalRenderer(renderer: WebGLRenderer, pair: PortalPair) 
           pending.push(renderer.compileAsync(environment.scene, viewer));
         }
       } finally {
+        anchors.forEach(({ anchor, visible }) => { anchor.visible = visible; });
         renderer.setRenderTarget(previousTarget, previousCubeFace, previousMipmapLevel);
         linearProbe.dispose();
       }
@@ -190,7 +197,7 @@ export function createPortalRenderer(renderer: WebGLRenderer, pair: PortalPair) 
     },
 
     render(environment: Environment, viewer: PerspectiveCamera, deltaSeconds: number) {
-      if (disposed || pair.a.closed || pair.b.closed) return;
+      if (disposed || pair.a.closed || pair.b.closed || pair.a.hidden || pair.b.hidden) return;
       viewer.updateWorldMatrix(true, false);
 
       for (const view of views) {

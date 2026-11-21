@@ -145,6 +145,16 @@ async function start() {
     if (!event.repeat) physicsDebug.mesh.visible = !physicsDebug.mesh.visible;
   });
 
+  if (import.meta.env.DEV) {
+    // Playtesting shortcut: send the green sphere back to the drop point, as
+    // if it had fallen off the map. Counts toward world 1's vanishing sequence.
+    window.addEventListener('keydown', (event) => {
+      if (event.code !== 'F4') return;
+      event.preventDefault();
+      if (!event.repeat) environments.respawnSphere();
+    });
+  }
+
   document.addEventListener('visibilitychange', () => {
     resetMovement();
     activeEnvironment.physics.reset();

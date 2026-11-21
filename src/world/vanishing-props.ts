@@ -20,7 +20,7 @@ const shadowMin = new Vector3();
 const shadowMax = new Vector3();
 
 /**
- * Props that are permanently removed on the first frame no rendered view can
+ * Armed props are permanently removed on the first frame no rendered view can
  * see them, like the portal's return entrance closing once out of view.
  *
  * Call observe() with every camera that draws this world in a frame (the main
@@ -29,6 +29,7 @@ const shadowMax = new Vector3();
 export function createVanishingProps(physics: Physics, light: DirectionalLight) {
   const props = new Set<Object3D>();
   const seen = new Set<Object3D>();
+  const vanished = new WeakSet<Object3D>();
 
   /**
    * World-space box holding the prop and the shadow it casts onto the floor
@@ -69,14 +70,24 @@ export function createVanishingProps(physics: Physics, light: DirectionalLight) 
 
   function remove(prop: Object3D) {
     props.delete(prop);
+    vanished.add(prop);
     prop.removeFromParent();
     physics.removeBody(prop);
     disposeObjectResources(prop);
   }
 
   return {
+    /** Arm a prop: from now on it vanishes the first frame it is unseen. */
     add(prop: Object3D) {
-      if (!physics.disposed) props.add(prop);
+      if (!physics.disposed && !vanished.has(prop)) props.add(prop);
+    },
+
+    has(prop: Object3D) {
+      return props.has(prop);
+    },
+
+    hasVanished(prop: Object3D) {
+      return vanished.has(prop);
     },
 
     observe(camera: PerspectiveCamera) {
