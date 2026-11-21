@@ -1,6 +1,6 @@
 import { Color, HemisphereLight, Mesh, PlaneGeometry, Scene, ShaderMaterial } from 'three';
 import groundVertexShader from '../shaders/ground.vert.glsl?raw';
-import groundFragmentShader from '../shaders/night-ground.frag.glsl?raw';
+import groundFragmentShader from '../shaders/depth-cue-ground.frag.glsl?raw';
 import type { Physics } from '../physics/world';
 import { createStarfieldSky } from './starfield';
 
@@ -11,15 +11,17 @@ export function createWorld3(physics: Physics) {
   // Faint cool starlight for any lit props added later.
   scene.add(new HemisphereLight('#8090c0', '#101018', 0.25));
 
+  // A flat, unlit dark yellow plain that dims with distance toward the horizon.
   const ground = new Mesh(
-    new PlaneGeometry(100, 100),
+    new PlaneGeometry(2000, 2000),
     new ShaderMaterial({
       vertexShader: groundVertexShader,
       fragmentShader: groundFragmentShader,
       uniforms: {
-        uColorA: { value: new Color('#0b0c12') },
-        uColorB: { value: new Color('#25273a') },
-        uCellSize: { value: 4 },
+        uColor: { value: new Color('#6b6512') },
+        uHorizonColor: { value: new Color('#1c1b08') },
+        uFalloffDistance: { value: 12 },
+        uFalloffExponent: { value: 0.7 },
       },
     }),
   );
