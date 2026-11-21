@@ -15,12 +15,14 @@ import {
 } from 'three';
 
 /**
- * A paragraph of prose, prose in a color (`{ text, color }`, any CSS color),
- * a block of code drawn line by line in monospace, or a page break.
+ * A paragraph of prose; styled prose (`{ text, color, obfuscated }`, with any
+ * CSS color, and obfuscated text constantly scrambled into random characters
+ * of about the same width); a block of code drawn line by line in monospace;
+ * or a page break.
  */
 export type TextBoxParagraph =
   | string
-  | { text: string; color: string }
+  | { text: string; color?: string; obfuscated?: boolean }
   | { code: string }
   | typeof pageBreak;
 
@@ -47,6 +49,8 @@ export interface TextBoxView {
   texture: Texture | null;
   width: number;
   height: number;
+  /** Redraws an animated view (one with obfuscated text) into its texture's canvas. */
+  repaint?: () => void;
 }
 
 /** A balloon's reading state, kept on its mesh as `userData.textBox`. */
@@ -109,6 +113,23 @@ const nearFadeEnd = 8;
 // How far off the centre of your view a balloon or its object can be and
 // still be the one F opens, in radians.
 const aimAngle = 0.25;
+// Obfuscated text re-scrambles this often, in milliseconds (about Minecraft's 20 ticks a second).
+const repaintInterval = 50;
+// Characters obfuscated text cycles through: half the basic alphabet, digits,
+// some Latin-1 symbols and accented capitals, and U+FFFD (the replacement
+// character). Each character only swaps for ones about as wide as itself, so
+// lines keep their shape; thin letters and marks (and Ì Í Î Ï) give narrow
+// letters like "i" and "l" something to swap with. Left out: U+00A0 and
+// U+00AD (invisible), and tiny accent marks that read as specks.
+const obfuscationGlyphs = [
+  'ACEFHKMNPRTWX',
+  'abdefhijklmrt',
+  '0123456789',
+  '#$%&*+=?@<>/\\!|',
+  '¡¢£¤¥¦§©®°±µ¶¼½¾¿«»',
+  'ÀÄÅÆÇÈËÌÍÎÏÐÑÒÕ×ØÙÜÝÞ',
+  '�',
+].join('');
 
 // The title icon, once loaded; until then (or if it fails) a drawn bulb is used.
 let icon: HTMLImageElement | undefined;
@@ -181,7 +202,7 @@ function buildTextBox(
   pickDeck?: (count: number, previous: number) => number,
 ) {
   const unitsPerPixel = width / layout.width;
-  const toView = (canvas: HTMLCanvasElement): TextBoxView => {
+  const toView = ({ canvas, repaint }: { canvas: HTMLCanvasElement; repaint?: () => void }): TextBoxView => {
     const texture = new CanvasTexture(canvas);
     texture.colorSpace = SRGBColorSpace;
     texture.anisotropy = 8; // Clamped to what the GPU supports.
@@ -189,9 +210,10 @@ function buildTextBox(
       texture,
       width: canvas.width / resolution * unitsPerPixel,
       height: canvas.height / resolution * unitsPerPixel,
+      repaint,
     };
   };
-  const closed = toView(drawClosedBalloon(title, pointer));
+  const closed = toView({ canvas: drawClosedBalloon(title, pointer) });
   const decks = bodies.map((body) => {
     const pages = paginate(body);
     return pages.map((page, index) => toView(drawPage(title, page, index, pages.length, pointer)));
@@ -233,6 +255,7 @@ export function anchorTextBox(
   },
 ) {
   let deck = -1;
+  let lastRepaint = -Infinity;
   let page = -1;
   const currentView = () => (page < 0 ? closed : decks[deck][page]);
   const getAnchor = (target: Vector3) => {
@@ -284,6 +307,13 @@ export function anchorTextBox(
     if (distance > showRange) page = -1; // Walking away closes it.
 
     const view = currentView();
+    // Re-scramble obfuscated text at a steady rate while it's being looked at.
+    const now = performance.now();
+    if (view.repaint && view.texture && now - lastRepaint >= repaintInterval) {
+      view.repaint();
+      view.texture.needsUpdate = true;
+      lastRepaint = now;
+    }
     mesh.material.map = view.texture;
     tip.copy(anchor).y += lift;
     mesh.matrixWorld.compose(tip, cameraRotation, viewScale.set(view.width, view.height, 1));
@@ -343,7 +373,13 @@ export function pressTextBoxKey(scene: Object3D, camera: Camera) {
 type Measure = (text: string) => number;
 type LaidOutParagraph = {
   height: number;
-  lines: { text: string; font: string; y: number }[];
+  lines: {
+    text: string;
+    font: string;
+    y: number;
+    /** For obfuscated lines: each non-space character's position and look-alikes. */
+    glyphs?: { x: number; candidates: string[] }[];
+  }[];
   isCode: boolean;
   color: string;
 };
@@ -369,14 +405,44 @@ function layOutParagraph(
     }
     return { height: y + layout.codePadding, lines, isCode: true, color: colors.ink };
   }
-  const { text: prose, color } = typeof paragraph === 'string'
-    ? { text: paragraph, color: colors.ink }
+  const { text: prose, color = colors.ink, obfuscated = false } = typeof paragraph === 'string'
+    ? { text: paragraph }
     : paragraph;
+  const pool = obfuscated ? measureGlyphs(measureBody) : [];
   for (const text of wrapText(prose, layout.width - layout.padding * 2, measureBody)) {
-    lines.push({ text, font: fonts.body, y });
+    const glyphs = obfuscated ? layOutGlyphs(text, measureBody, pool) : undefined;
+    lines.push({ text, font: fonts.body, y, glyphs });
     y += layout.lineHeight;
   }
   return { height: y, lines, isCode: false, color };
+}
+
+/** Every obfuscation glyph with its width in the body font. */
+function measureGlyphs(measure: Measure) {
+  return [...obfuscationGlyphs].map((glyph) => ({ glyph, width: measure(glyph) }));
+}
+
+/**
+ * Where each non-space character of `line` sits, and the glyphs of about the
+ * same width (within a pixel, or else the closest few) it may turn into.
+ */
+function layOutGlyphs(line: string, measure: Measure, pool: { glyph: string; width: number }[]) {
+  const glyphs: { x: number; candidates: string[] }[] = [];
+  [...line].forEach((character, index) => {
+    if (character === ' ') return;
+    const width = measure(character);
+    let candidates = pool.filter((entry) => Math.abs(entry.width - width) <= 1);
+    if (candidates.length < 2) {
+      candidates = [...pool]
+        .sort((a, b) => Math.abs(a.width - width) - Math.abs(b.width - width))
+        .slice(0, 3);
+    }
+    glyphs.push({
+      x: measure(line.slice(0, index)),
+      candidates: candidates.map((entry) => entry.glyph),
+    });
+  });
+  return glyphs;
 }
 
 /** Group paragraphs into pages that each fit within layout.maxPageBody. */
@@ -405,7 +471,10 @@ function paginate(body: TextBoxParagraph[]) {
   return pages;
 }
 
-/** A blank balloon sized for `contentHeight` of content, ready to draw into. */
+/**
+ * A canvas sized for a balloon with `contentHeight` of content, and
+ * paintBalloon(), which clears it to a blank balloon ready to draw into.
+ */
 function createBalloonCanvas(width: number, contentHeight: number, pointer: 'down' | 'up') {
   const balloonHeight = contentHeight + layout.padding * 2;
   const top = pointer === 'up' ? layout.tailHeight : 0;
@@ -415,13 +484,16 @@ function createBalloonCanvas(width: number, contentHeight: number, pointer: 'dow
   const context = canvas.getContext('2d')!;
   context.scale(resolution, resolution);
 
-  traceBalloon(context, width, top, balloonHeight, pointer);
-  context.fillStyle = colors.balloon;
-  context.fill();
-  context.lineWidth = 1;
-  context.strokeStyle = colors.ink;
-  context.stroke();
-  return { canvas, context, contentTop: top + layout.padding };
+  const paintBalloon = () => {
+    context.clearRect(0, 0, canvas.width / resolution, canvas.height / resolution);
+    traceBalloon(context, width, top, balloonHeight, pointer);
+    context.fillStyle = colors.balloon;
+    context.fill();
+    context.lineWidth = 1;
+    context.strokeStyle = colors.ink;
+    context.stroke();
+  };
+  return { canvas, context, contentTop: top + layout.padding, paintBalloon };
 }
 
 function drawTitle(context: CanvasRenderingContext2D, title: string, top: number) {
@@ -444,11 +516,12 @@ function drawClosedBalloon(title: string, pointer: 'down' | 'up') {
   const titleWidth = layout.iconSize + 6 + createMeasure(fonts.title)(title);
   const hintWidth = createMeasure(fonts.hint)(hint);
   const width = Math.ceil(Math.max(titleWidth, hintWidth) + layout.padding * 2);
-  const { canvas, context, contentTop } = createBalloonCanvas(
+  const { canvas, context, contentTop, paintBalloon } = createBalloonCanvas(
     width,
     layout.titleHeight + layout.hintHeight,
     pointer,
   );
+  paintBalloon();
   drawTitle(context, title, contentTop);
   context.fillStyle = colors.hint;
   context.textBaseline = 'top';
@@ -457,7 +530,10 @@ function drawClosedBalloon(title: string, pointer: 'down' | 'up') {
   return canvas;
 }
 
-/** One open page: title, body, then a page count and a Next or Close button. */
+/**
+ * One open page: title, body, then a page count and a Next or Close button.
+ * A page with obfuscated text also returns repaint(), which re-scrambles it.
+ */
 function drawPage(
   title: string,
   paragraphs: LaidOutParagraph[],
@@ -471,35 +547,48 @@ function drawPage(
   );
   const bodyTop = layout.titleHeight + layout.titleGap;
   const footerTop = bodyTop + bodyHeight + layout.footerGap;
-  const { canvas, context, contentTop } = createBalloonCanvas(
+  const { canvas, context, contentTop, paintBalloon } = createBalloonCanvas(
     layout.width,
     footerTop + layout.buttonHeight,
     pointer,
   );
-  drawTitle(context, title, contentTop);
 
-  let y = contentTop + bodyTop;
-  for (const paragraph of paragraphs) {
-    if (paragraph.isCode) drawCodePanel(context, y, paragraph.height);
-    context.fillStyle = paragraph.color;
-    context.textBaseline = 'top';
-    for (const line of paragraph.lines) {
-      context.font = line.font;
-      const indent = paragraph.isCode ? 8 : 0;
-      context.fillText(line.text, layout.padding + indent, y + line.y);
+  const paint = () => {
+    paintBalloon();
+    drawTitle(context, title, contentTop);
+
+    let y = contentTop + bodyTop;
+    for (const paragraph of paragraphs) {
+      if (paragraph.isCode) drawCodePanel(context, y, paragraph.height);
+      context.fillStyle = paragraph.color;
+      context.textBaseline = 'top';
+      for (const line of paragraph.lines) {
+        context.font = line.font;
+        const left = layout.padding + (paragraph.isCode ? 8 : 0);
+        if (line.glyphs) {
+          for (const { x, candidates } of line.glyphs) {
+            const glyph = candidates[Math.floor(Math.random() * candidates.length)];
+            context.fillText(glyph, left + x, y + line.y);
+          }
+        } else {
+          context.fillText(line.text, left, y + line.y);
+        }
+      }
+      y += paragraph.height + layout.paragraphGap;
     }
-    y += paragraph.height + layout.paragraphGap;
-  }
 
-  const buttonTop = contentTop + footerTop;
-  if (pageCount > 1) {
-    context.fillStyle = colors.hint;
-    context.textBaseline = 'middle';
-    context.font = fonts.hint;
-    context.fillText(`Page ${index + 1} of ${pageCount}`, layout.padding, buttonTop + layout.buttonHeight / 2);
-  }
-  drawButton(context, index + 1 < pageCount ? 'Next (F)' : 'Close (F)', buttonTop);
-  return canvas;
+    const buttonTop = contentTop + footerTop;
+    if (pageCount > 1) {
+      context.fillStyle = colors.hint;
+      context.textBaseline = 'middle';
+      context.font = fonts.hint;
+      context.fillText(`Page ${index + 1} of ${pageCount}`, layout.padding, buttonTop + layout.buttonHeight / 2);
+    }
+    drawButton(context, index + 1 < pageCount ? 'Next (F)' : 'Close (F)', buttonTop);
+  };
+  paint();
+  const animated = paragraphs.some((paragraph) => paragraph.lines.some((line) => line.glyphs));
+  return { canvas, repaint: animated ? paint : undefined };
 }
 
 /** Code sits in a white, sunken panel, like samples in old help files. */

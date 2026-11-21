@@ -190,6 +190,22 @@ function warning(text: string): TextBoxParagraph {
   return { text, color: '#c00000' };
 }
 
+/** A paragraph scrambled into constantly changing random characters. */
+function obfuscated(text: string): TextBoxParagraph {
+  return { text, obfuscated: true };
+}
+
+// Test billboard for the obfuscated text style.
+const obfuscationTest: TextBoxContent = {
+  title: 'Obfuscation test',
+  body: [
+    obfuscated('Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do '
+      + 'eiusmod tempor incididunt ut labore et dolore magna aliqua.'),
+    obfuscated('Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris '
+      + 'nisi ut aliquip ex ea commodo consequat.'),
+  ],
+};
+
 // The magenta sphere's lessons. The pipeline comes first, as pages in order;
 // after that, entries (including a few warnings) come up at random.
 const graphicsPipeline: TextBoxParagraph[] = [
@@ -287,6 +303,11 @@ export function addWorld1Notes(
     { title: 'Graphics 101', entries: lessons, first: lessons.indexOf(graphicsPipeline) },
     { lift: 3.5 },
   ));
+  const testNote = createTextBox(obfuscationTest, { lift: 1 });
+  // On the floor to the left of the spawn, clear of the other notes.
+  testNote.position.set(-10, 0, 4);
+  scene.add(testNote);
+
   const floorNote = createTextBox(checkerboardFloor, { lift: 1 });
   // On open floor between the teapot and the cube, clear of both from the spawn.
   floorNote.position.set(-2, 0, -14);
