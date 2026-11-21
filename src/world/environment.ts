@@ -9,6 +9,7 @@ import {
   type Material,
   type Mesh,
   type Object3D,
+  type PerspectiveCamera,
   type WebGLRenderTarget,
 } from 'three';
 import { Reflector } from 'three/addons/objects/Reflector.js';
@@ -19,6 +20,10 @@ export interface Environment {
   scene: Scene;
   physics: Physics;
   update: (deltaSeconds: number) => void;
+  /** Report a camera this frame draws the scene with (main or portal view). */
+  observe: (camera: PerspectiveCamera) => void;
+  /** Called once per frame after every view has been drawn. */
+  afterRender: () => void;
   stepHeight?: number;
   readonly disposed: boolean;
   dispose: () => void;
@@ -68,8 +73,10 @@ export function disposeObjectResources(root: Object3D) {
 export function createEnvironment(
   scene: Scene,
   physics: Physics,
-  { update, dispose: disposeWorld, stepHeight }: {
+  { update, observe, afterRender, dispose: disposeWorld, stepHeight }: {
     update?: (deltaSeconds: number) => void;
+    observe?: (camera: PerspectiveCamera) => void;
+    afterRender?: () => void;
     dispose?: () => void;
     stepHeight?: number;
   } = {},
@@ -83,12 +90,20 @@ export function createEnvironment(
     update(deltaSeconds) {
       if (!disposed) update?.(deltaSeconds);
     },
+    observe(camera) {
+      if (!disposed) observe?.(camera);
+    },
+    afterRender() {
+      if (!disposed) afterRender?.();
+    },
     dispose() {
       if (disposed) return;
       disposed = true;
       disposeWorld?.();
       disposeWorld = undefined;
       update = undefined;
+      observe = undefined;
+      afterRender = undefined;
       disposeObjectResources(scene);
       scene.clear();
       scene.background = null;

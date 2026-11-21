@@ -113,6 +113,16 @@ export async function createPhysics() {
       return body;
     },
 
+    /** Remove a prop's body (and its colliders) from the simulation. */
+    removeBody(mesh: Object3D) {
+      if (disposed) return false;
+      const index = objects.findIndex((object) => object.mesh === mesh);
+      if (index === -1) return false;
+      world.removeRigidBody(objects[index].body);
+      objects.splice(index, 1);
+      return true;
+    },
+
     update(
       deltaSeconds: number,
       beforeStep?: (deltaSeconds: number) => void,

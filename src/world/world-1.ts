@@ -6,6 +6,7 @@ import { createSky } from './sky';
 import { createPrimitives } from './primitives';
 import { createTeapot } from './teapot';
 import { disposeObjectResources } from './environment';
+import { createVanishingProps } from './vanishing-props';
 
 export function createWorld1(physics: Physics) {
   const scene = new Scene();
@@ -25,7 +26,11 @@ export function createWorld1(physics: Physics) {
   ground.rotation.x = -Math.PI / 2;
   scene.add(ground);
   physics.addFloor(ground.geometry.parameters.width, ground.geometry.parameters.height);
-  scene.add(createPrimitives(physics));
+  const primitives = createPrimitives(physics);
+  scene.add(primitives.group);
+  // Props are removed for good the first frame no view can see them.
+  const vanishing = createVanishingProps(physics, primitives.keyLight);
+  primitives.props.forEach((prop) => vanishing.add(prop));
   const loadingManager = new LoadingManager();
   // Resolves once late-loaded assets are in the scene (or failed to load), so
   // their shaders can be pre-warmed before the player first sees them.
@@ -33,11 +38,21 @@ export function createWorld1(physics: Physics) {
     .then((teapot) => {
       if (!teapot) return;
       if (physics.disposed) disposeObjectResources(teapot);
-      else scene.add(teapot);
+      else {
+        scene.add(teapot);
+        vanishing.add(teapot);
+      }
     })
     .catch((error) => {
       if (!physics.disposed) console.error('Unable to load the Utah teapot:', error);
     });
 
-  return { scene, sky, ready, dispose: () => loadingManager.abort() };
+  return {
+    scene,
+    sky,
+    ready,
+    observe: vanishing.observe,
+    afterRender: vanishing.afterRender,
+    dispose: () => loadingManager.abort(),
+  };
 }

@@ -234,7 +234,11 @@ async function start() {
       });
     }
     portals.render(viewEnvironment, viewCamera, deltaSeconds);
+    viewEnvironment.observe(viewCamera);
     renderer.render(viewEnvironment.scene, viewCamera);
+    // Props no view could see this frame vanish before the next one.
+    environments.world1.afterRender();
+    environments.world2.afterRender();
   });
 }
 

@@ -13,6 +13,8 @@ export async function createEnvironments() {
   const sunset = createWorld2(physics2);
 
   const world1 = createEnvironment(checkerboard.scene, physics1, {
+    observe: checkerboard.observe,
+    afterRender: checkerboard.afterRender,
     dispose: checkerboard.dispose,
   });
   const world2 = createEnvironment(sunset.scene, physics2, {

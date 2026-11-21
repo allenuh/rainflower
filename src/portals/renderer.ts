@@ -236,6 +236,7 @@ export function createPortalRenderer(renderer: WebGLRenderer, pair: PortalPair) 
           // re-binds it after its pass, so the scissor survives that too.
           renderer.setRenderTarget(view.target);
           if (!renderer.autoClear) renderer.clear();
+          view.destination.environment.observe(view.camera);
           renderer.render(view.destination.environment.scene, view.camera);
         } finally {
           views.forEach(({ surface }, index) => { surface.visible = visibility[index]; });

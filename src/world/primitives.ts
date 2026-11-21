@@ -83,5 +83,5 @@ export function createPrimitives(physics: Physics) {
   shadows.receiveShadow = true;
   group.add(shadows);
 
-  return group;
+  return { group, props: shapes, keyLight };
 }
