@@ -1,7 +1,10 @@
 import { Color, HemisphereLight, Mesh, PlaneGeometry, Scene, ShaderMaterial } from 'three';
 import groundVertexShader from '../shaders/ground.vert.glsl?raw';
 import groundFragmentShader from '../shaders/depth-cue-ground.frag.glsl?raw';
+import RAPIER from '@dimforge/rapier3d-compat';
 import type { Physics } from '../physics/world';
+import { playerEyeHeight } from '../player/controller';
+import { createPinkSphere } from './pink-sphere';
 import { createStarfieldSky } from './starfield';
 
 export function createWorld3(physics: Physics) {
@@ -31,5 +34,16 @@ export function createWorld3(physics: Physics) {
   physics.addFloor(width, height);
   physics.addPlayerBounds(width, height);
 
-  return { scene, sky: starfield.sky, starfield };
+  // Floating at eye height far out on the plain. It casts no light.
+  const sphereRadius = 2.5;
+  const sphere = createPinkSphere(sphereRadius);
+  sphere.position.set(-750, playerEyeHeight, 500);
+  scene.add(sphere);
+  // A fixed collider so the player walks into the sphere, not through it.
+  const sphereBody = physics.world.createRigidBody(
+    RAPIER.RigidBodyDesc.fixed().setTranslation(sphere.position.x, sphere.position.y, sphere.position.z),
+  );
+  physics.world.createCollider(RAPIER.ColliderDesc.ball(sphereRadius), sphereBody);
+
+  return { scene, sky: starfield.sky, starfield, sphere };
 }
