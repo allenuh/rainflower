@@ -3,7 +3,7 @@ import { Box3, Quaternion, Vector3, type Camera } from 'three';
 import type { Physics } from '../physics/world';
 
 const pickupRange = 10;
-const throwSpeed = 28;
+const throwSpeed = 42;
 type Prop = NonNullable<ReturnType<Physics['findProp']>>;
 
 export function createPropInteraction(physics: Physics, playerBody: RAPIER.RigidBody) {

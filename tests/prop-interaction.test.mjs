@@ -134,7 +134,7 @@ test('throwing uses the current aim and does not automatically reacquire the pro
     const { body } = f.addProp();
     f.pickUp();
     f.camera.lookAt(10, 8, 8);
-    const expected = f.camera.getWorldDirection(new Vector3()).multiplyScalar(28);
+    const expected = f.camera.getWorldDirection(new Vector3()).multiplyScalar(42);
     assert.ok(f.interaction.throwHeld(f.camera));
     assert.ok(new Vector3().copy(body.linvel()).distanceTo(expected) < 0.00001);
     assert.ok(body.isDynamic() && body.collider(0).isEnabled());
