@@ -48,7 +48,7 @@ test('props fall more strongly while player gravity stays unchanged', async () =
       physics.update(1 / 60, (step) => player.update(step, { x: 0, y: 0, z: 0 }));
     }
     const playerDrop = playerStart - player.body.translation().y;
-    assert.ok(Math.abs(playerDrop - 1.267125) < 0.01);
+    assert.ok(Math.abs(playerDrop - 2.53425) < 0.02);
     assert.ok(propStart - body.translation().y > playerDrop * 1.5);
   } finally {
     player?.dispose();

@@ -4,6 +4,8 @@ import { Quaternion, Vector3, type Object3D } from 'three';
 const fixedTimeStep = 1 / 60;
 const maxStepsPerFrame = 5;
 const propDensity = 0.05;
+// Twice Earth's gravity; the player falls under this, props under propGravityScale times it.
+const gravity = -9.81 * 2;
 const propGravityScale = 2;
 const respawnBelowY = -100;
 const respawnPosition = { x: 0, y: 40, z: 0 };
@@ -12,7 +14,7 @@ const respawnInterval = 1.5;
 export async function createPhysics() {
   await RAPIER.init();
 
-  const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+  const world = new RAPIER.World({ x: 0, y: gravity, z: 0 });
   world.timestep = fixedTimeStep;
   let accumulator = 0;
   let respawnCooldown = 0;
