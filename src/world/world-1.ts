@@ -31,7 +31,10 @@ export function createWorld1(physics: Physics) {
   );
   ground.rotation.x = -Math.PI / 2;
   scene.add(ground);
-  physics.addFloor(ground.geometry.parameters.width, ground.geometry.parameters.height);
+  const { width, height } = ground.geometry.parameters;
+  physics.addFloor(width, height);
+  // Keep the player on the checkerboard; props can still go over the edge.
+  physics.addPlayerBounds(width, height);
   const primitives = createPrimitives(physics);
   scene.add(primitives.group);
   // Armed props are removed for good the first frame no view can see them.

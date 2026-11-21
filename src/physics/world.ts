@@ -1,5 +1,5 @@
 import RAPIER from '@dimforge/rapier3d-compat';
-import { Quaternion, Vector3, type Object3D } from 'three';
+import { Quaternion, Vector3, type Object3D, type Vector3Like } from 'three';
 
 const fixedTimeStep = 1 / 60;
 const maxStepsPerFrame = 5;
@@ -10,6 +10,26 @@ const propGravityScale = 2;
 const respawnBelowY = -100;
 const respawnPosition = { x: 0, y: 40, z: 0 };
 const respawnInterval = 1.5;
+
+/**
+ * Collision group bits. Rapier packs a collider's groups as
+ * `(membership << 16) | filter`; two colliders interact only when each one's
+ * membership intersects the other's filter. Colliders default to every bit,
+ * so the player's capsule is a PLAYER member without opting in.
+ */
+export const PLAYER = 1 << 0;
+export const BARRIER = 1 << 1;
+const allGroups = 0xffff;
+// Props ignore player barriers, so they can still leave a bounded area.
+const propGroups = (allGroups << 16) | (allGroups & ~BARRIER);
+// Barriers block only the player.
+const barrierGroups = (BARRIER << 16) | PLAYER;
+
+export interface PlayerBarrier {
+  position: Vector3Like;
+  halfExtents: Vector3Like;
+  rotation?: RAPIER.Rotation;
+}
 
 export async function createPhysics() {
   await RAPIER.init();
@@ -37,6 +57,23 @@ export async function createPhysics() {
       object.previousPosition.copy(object.body.translation());
       object.previousRotation.copy(object.body.rotation());
     }
+  }
+
+  /**
+   * An invisible, fixed cuboid wall that blocks only the player; props pass
+   * through it. Shown only by the physics debug view.
+   */
+  function addPlayerBarrier({ position, halfExtents, rotation = { x: 0, y: 0, z: 0, w: 1 } }: PlayerBarrier) {
+    const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed()
+      .setTranslation(position.x, position.y, position.z)
+      .setRotation(rotation));
+    world.createCollider(
+      RAPIER.ColliderDesc.cuboid(halfExtents.x, halfExtents.y, halfExtents.z)
+        .setFriction(0)
+        .setCollisionGroups(barrierGroups),
+      body,
+    );
+    return body;
   }
 
   function respawnFallenProp() {
@@ -93,6 +130,40 @@ export async function createPhysics() {
       return body;
     },
 
+    addPlayerBarrier,
+
+    /**
+     * Wall the player into a `width` x `depth` rectangle centered on `center`
+     * (x/z), rising from `surfaceY`: four player barriers whose inner faces lie
+     * exactly on its edges. Match a floor made by addFloor with the same size.
+     */
+    addPlayerBounds(
+      width: number,
+      depth: number,
+      { center = { x: 0, z: 0 }, surfaceY = 0, height = 50, thickness = 1 }: {
+        center?: { x: number; z: number };
+        surfaceY?: number;
+        height?: number;
+        thickness?: number;
+      } = {},
+    ) {
+      const y = surfaceY + height / 2;
+      const halfHeight = height / 2;
+      const halfThickness = thickness / 2;
+      // The X walls span the corners so there are no gaps where walls meet.
+      const xOffset = width / 2 + halfThickness;
+      const zOffset = depth / 2 + halfThickness;
+      return [
+        { x: xOffset, z: 0, halfX: halfThickness, halfZ: depth / 2 + thickness },
+        { x: -xOffset, z: 0, halfX: halfThickness, halfZ: depth / 2 + thickness },
+        { x: 0, z: zOffset, halfX: width / 2, halfZ: halfThickness },
+        { x: 0, z: -zOffset, halfX: width / 2, halfZ: halfThickness },
+      ].map(({ x, z, halfX, halfZ }) => addPlayerBarrier({
+        position: { x: center.x + x, y, z: center.z + z },
+        halfExtents: { x: halfX, y: halfHeight, z: halfZ },
+      }));
+    },
+
     addDynamicBody(mesh: Object3D, colliders: RAPIER.ColliderDesc[]) {
       mesh.getWorldPosition(position);
       mesh.getWorldQuaternion(rotation);
@@ -108,7 +179,11 @@ export async function createPhysics() {
 
       // Collider dimensions are local to the body; callers account for mesh scale.
       for (const collider of colliders) {
-        world.createCollider(collider.setDensity(propDensity).setFriction(1.9).setRestitution(0.08), body);
+        world.createCollider(collider
+          .setDensity(propDensity)
+          .setFriction(1.9)
+          .setRestitution(0.08)
+          .setCollisionGroups(propGroups), body);
       }
       objects.push({
         mesh,
