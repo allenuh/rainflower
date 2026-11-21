@@ -15,7 +15,10 @@ import {
 } from 'three';
 
 /** A paragraph of prose, or a block of code drawn line by line in monospace. */
-export type TextBoxParagraph = string | { code: string };
+export type TextBoxParagraph = string | { code: string } | typeof pageBreak;
+
+/** Put in a body to start a new page there, rather than where the text fills one. */
+export const pageBreak = { pageBreak: true } as const;
 
 export interface TextBoxContent {
   title: string;
@@ -43,6 +46,7 @@ export interface TextBoxView {
 export interface TextBoxHandle {
   /** The open page, or -1 while closed. */
   readonly page: number;
+  /** Pages in the open (or most recently opened) entry. */
   readonly pageCount: number;
   /** Open, turn to the next page, or close after the last one. */
   advance(): void;
@@ -134,9 +138,40 @@ const balloonPoint = new Vector3();
  * only its title until opened with F (see pressTextBoxKey), then reads page
  * by page.
  */
-export function createTextBox(
-  content: TextBoxContent,
-  { pointer = 'down', width = 6, lift = 1 }: TextBoxOptions = {},
+export function createTextBox(content: TextBoxContent, options: TextBoxOptions = {}) {
+  return buildTextBox(content.title, [content.body], options);
+}
+
+/**
+ * A balloon that shows one entry, picked at random each time it's opened and
+ * never the same one twice in a row: for example, a fun fact. `first`, if
+ * given, is the entry shown the very first time.
+ */
+export function createRandomTextBox(
+  { title, entries, first }: { title: string; entries: TextBoxParagraph[][]; first?: number },
+  options: TextBoxOptions = {},
+) {
+  return buildTextBox(title, entries, options, (count, previous) => (
+    previous < 0 && first !== undefined ? first : pickAnotherIndex(count, previous, Math.random)
+  ));
+}
+
+/**
+ * A random index in [0, count) other than `previous` (when there's a choice).
+ * `random` returns a number in [0, 1), like Math.random.
+ */
+export function pickAnotherIndex(count: number, previous: number, random: () => number) {
+  if (count <= 1) return 0;
+  if (previous < 0 || previous >= count) return Math.floor(random() * count);
+  const index = Math.floor(random() * (count - 1));
+  return index >= previous ? index + 1 : index;
+}
+
+function buildTextBox(
+  title: string,
+  bodies: TextBoxParagraph[][],
+  { pointer = 'down', width = 6, lift = 1 }: TextBoxOptions,
+  pickDeck?: (count: number, previous: number) => number,
 ) {
   const unitsPerPixel = width / layout.width;
   const toView = (canvas: HTMLCanvasElement): TextBoxView => {
@@ -149,11 +184,11 @@ export function createTextBox(
       height: canvas.height / resolution * unitsPerPixel,
     };
   };
-  const pages = paginate(content.body);
-  const closed = toView(drawClosedBalloon(content.title, pointer));
-  const pageViews = pages.map((page, index) => toView(
-    drawPage(content.title, page, index, pages.length, pointer),
-  ));
+  const closed = toView(drawClosedBalloon(title, pointer));
+  const decks = bodies.map((body) => {
+    const pages = paginate(body);
+    return pages.map((page, index) => toView(drawPage(title, page, index, pages.length, pointer)));
+  });
 
   // A unit square with the tail's tip at its local origin, scaled per view.
   const geometry = new PlaneGeometry(1, 1);
@@ -166,8 +201,8 @@ export function createTextBox(
     toneMapped: false,
   });
   const mesh = new Mesh(geometry, material);
-  mesh.name = `text-box: ${content.title}`;
-  anchorTextBox(mesh, { lift, pointer, closed, pages: pageViews });
+  mesh.name = `text-box: ${title}`;
+  anchorTextBox(mesh, { lift, pointer, closed, decks, pickDeck });
   return mesh;
 }
 
@@ -180,15 +215,19 @@ export function createTextBox(
  */
 export function anchorTextBox(
   mesh: Mesh<PlaneGeometry, MeshBasicMaterial>,
-  { lift, pointer, closed, pages }: {
+  { lift, pointer, closed, decks, pickDeck = () => 0 }: {
     lift: number;
     pointer: 'down' | 'up';
     closed: TextBoxView;
-    pages: TextBoxView[];
+    /** Each entry's pages; one entry for an ordinary balloon. */
+    decks: TextBoxView[][];
+    /** Which entry to open, given how many there are and the last one opened. */
+    pickDeck?: (count: number, previous: number) => number;
   },
 ) {
+  let deck = -1;
   let page = -1;
-  const currentView = () => (page < 0 ? closed : pages[page]);
+  const currentView = () => (page < 0 ? closed : decks[deck][page]);
   const getAnchor = (target: Vector3) => {
     // Recompute it rather than reading matrixWorld, which onBeforeRender overwrites.
     target.copy(mesh.position);
@@ -198,9 +237,14 @@ export function anchorTextBox(
 
   const handle: TextBoxHandle = {
     get page() { return page; },
-    pageCount: pages.length,
+    get pageCount() { return decks[Math.max(deck, 0)].length; },
     advance() {
-      page = page + 1 < pages.length ? page + 1 : -1;
+      if (page < 0) {
+        deck = pickDeck(decks.length, deck);
+        page = 0;
+      } else {
+        page = page + 1 < decks[deck].length ? page + 1 : -1;
+      }
     },
     close() {
       page = -1;
@@ -218,7 +262,7 @@ export function anchorTextBox(
 
   // Farthest any view reaches from the anchor, in any orientation.
   const reach = lift + Math.max(
-    ...[closed, ...pages].map(({ width, height }) => Math.hypot(width / 2, height)),
+    ...[closed, ...decks.flat()].map(({ width, height }) => Math.hypot(width / 2, height)),
   );
   mesh.geometry.boundingBox = new Box3(
     new Vector3(-reach, -reach, -reach),
@@ -303,7 +347,10 @@ function createMeasure(font: string): Measure {
 }
 
 /** Lines of one paragraph, positioned from its own top. */
-function layOutParagraph(paragraph: TextBoxParagraph, measureBody: Measure): LaidOutParagraph {
+function layOutParagraph(
+  paragraph: Exclude<TextBoxParagraph, typeof pageBreak>,
+  measureBody: Measure,
+): LaidOutParagraph {
   const lines: LaidOutParagraph['lines'] = [];
   let y = 0;
   if (typeof paragraph === 'string') {
@@ -328,6 +375,12 @@ function paginate(body: TextBoxParagraph[]) {
   let page: LaidOutParagraph[] = [];
   let height = 0;
   for (const paragraph of body) {
+    if (typeof paragraph === 'object' && 'pageBreak' in paragraph) {
+      if (page.length) pages.push(page);
+      page = [];
+      height = 0;
+      continue;
+    }
     const laidOut = layOutParagraph(paragraph, measureBody);
     if (page.length && height + layout.paragraphGap + laidOut.height > layout.maxPageBody) {
       pages.push(page);

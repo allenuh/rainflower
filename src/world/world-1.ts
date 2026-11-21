@@ -48,8 +48,9 @@ export function createWorld1(physics: Physics) {
     stages: vanishingStages,
     firstRespawns: firstVanishingRespawns,
   });
-  for (const [name, prop] of Object.entries(primitives.props)) {
-    if (prop !== sphere) sequence.provide(name, prop);
+  // Props outside the sequence, like the magenta sphere, never vanish.
+  for (const name of vanishingStages) {
+    if (name !== 'teapot') sequence.provide(name, primitives.props[name]);
   }
   const loadingManager = new LoadingManager();
   // Resolves once late-loaded assets are in the scene (or failed to load), so

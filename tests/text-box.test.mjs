@@ -5,7 +5,9 @@ import {
   PlaneGeometry, Vector3,
 } from 'three';
 import { setBoundsWithoutTextBoxes } from '../src/player/prop-interaction.ts';
-import { anchorTextBox, findAimedTextBox, pressTextBoxKey, wrapText } from '../src/ui/text-box.ts';
+import {
+  anchorTextBox, findAimedTextBox, pickAnotherIndex, pressTextBoxKey, wrapText,
+} from '../src/ui/text-box.ts';
 
 // One unit per character keeps the expected widths easy to read.
 const measure = (text) => text.length;
@@ -31,7 +33,7 @@ function propWithTextBox() {
     lift: 4,
     pointer: 'down',
     closed: { texture: null, width: 2, height: 1 },
-    pages: [{ texture: null, width: 6, height: 3 }, { texture: null, width: 6, height: 2 }],
+    decks: [[{ texture: null, width: 6, height: 3 }, { texture: null, width: 6, height: 2 }]],
   });
   prop.add(balloon);
   return prop;
@@ -166,4 +168,45 @@ test('F reports no interaction when aimed at nothing with nothing open', () => {
   assert.equal(pressTextBoxKey(scene, atNothing), false);
   assert.equal(handleOf(left).page, -1);
   assert.equal(handleOf(right).page, -1);
+});
+
+test('pickAnotherIndex never repeats the previous index', () => {
+  // Sweep the whole range of random values.
+  for (let previous = 0; previous < 4; previous++) {
+    const picks = new Set();
+    for (let step = 0; step < 100; step++) picks.add(pickAnotherIndex(4, previous, () => step / 100));
+    assert.equal(picks.has(previous), false);
+    assert.equal(picks.size, 3);
+  }
+  assert.equal(pickAnotherIndex(1, 0, () => 0.9), 0);
+  assert.equal(pickAnotherIndex(3, -1, () => 0.9), 2);
+});
+
+test('a random text box opens the entry it picks, and pages through that entry', () => {
+  const balloon = new Mesh(new PlaneGeometry(1, 1).translate(0, 0.5, 0), new MeshBasicMaterial());
+  const page = (height) => ({ texture: null, width: 6, height });
+  const picked = [];
+  const handle = anchorTextBox(balloon, {
+    lift: 4,
+    pointer: 'down',
+    closed: page(1),
+    decks: [[page(3)], [page(3), page(2)], [page(2)]],
+    pickDeck(count, previous) {
+      picked.push(previous);
+      return (previous + 1) % count;
+    },
+  });
+
+  handle.advance();
+  assert.equal(handle.page, 0);
+  assert.equal(handle.pageCount, 1); // Entry 0.
+  handle.advance();
+  assert.equal(handle.page, -1);
+  handle.advance();
+  assert.equal(handle.pageCount, 2); // Entry 1, which has two pages.
+  handle.advance();
+  assert.equal(handle.page, 1);
+  handle.advance();
+  assert.equal(handle.page, -1);
+  assert.deepEqual(picked, [-1, 0]);
 });
