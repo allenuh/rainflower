@@ -3,7 +3,6 @@ uniform vec3 uBackground;
 uniform vec3 uLayerDensity;    // Lattice cells across the sky sphere's radius.
 uniform vec3 uLayerCoverage;   // Fraction of cells that hold a star.
 uniform vec3 uLayerBrightness; // Light of the layer's brightest possible star.
-uniform vec3 uLayerMask;       // 1 shows a layer, 0 hides it (debug).
 uniform float uMagnitudeExponent; // Higher makes bright stars rarer.
 uniform float uStarRadius;    // Angular radius (Gaussian sigma) of a full-brightness star, in radians.
 uniform float uPixelSigma;    // Narrowest a star is drawn, in pixels.
@@ -20,7 +19,6 @@ uniform float uGlowStrength;
 uniform float uGlintThreshold; // Flux at which the cross glint starts to appear.
 uniform float uGlintLength;   // Angular falloff length of each spike, in radians.
 uniform float uGlintStrength;
-uniform float uDebugCells;    // 1 tints the bright layer's lattice cells.
 
 varying vec3 vSkyDirection;
 
@@ -123,13 +121,8 @@ void main() {
   float pixelAngle = sqrt(length(cross(dFdx(direction), dFdy(direction))));
   vec3 color = uBackground;
 
-  if (uDebugCells > 0.5) {
-    color += hash33(floor(direction * uLayerDensity.x)) * 0.12;
-  }
-
   vec3 light = vec3(0.0);
   for (int layer = 0; layer < 3; layer++) {
-    if (uLayerMask[layer] < 0.5) continue;
     light += starLayer(
       direction,
       uLayerDensity[layer],

@@ -10,7 +10,6 @@ export function createStarfieldSky() {
     uLayerDensity: { value: new Vector3(16, 40, 90) },
     uLayerCoverage: { value: new Vector3(0.6, 0.6, 0.6) },
     uLayerBrightness: { value: new Vector3(1.2, 0.5, 0.18) },
-    uLayerMask: { value: new Vector3(1, 1, 1) },
     uMagnitudeExponent: { value: 6 },
     uStarRadius: { value: 0.0009 },
     uPixelSigma: { value: 0.6 },
@@ -32,7 +31,6 @@ export function createStarfieldSky() {
     uGlintThreshold: { value: 0.75 },
     uGlintLength: { value: 0.004 },
     uGlintStrength: { value: 0.5 },
-    uDebugCells: { value: 0 },
   };
   const material = new ShaderMaterial({
     // The sunset dome's vertex shader ignores camera translation, keeping the

@@ -55,5 +55,5 @@ export function createWorld3(physics: Physics) {
   );
   physics.world.createCollider(RAPIER.ColliderDesc.ball(sphereRadius), sphereBody);
 
-  return { scene, sky: starfield.sky, starfield, sphere };
+  return { scene, sky: starfield.sky };
 }
