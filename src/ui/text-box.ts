@@ -310,6 +310,11 @@ export function anchorTextBox(
   mesh.userData.textBox = handle;
   mesh.castShadow = false;
   mesh.receiveShadow = false;
+  // Balloons don't write depth, so any see-through surface drawn after one
+  // paints straight over it, such as the props' shadows, which are a
+  // transparent plane above the floor. Three sorts see-through objects by
+  // renderOrder before distance, so this draws balloons after all of them.
+  mesh.renderOrder = 1;
 
   // Farthest any view reaches from the anchor, in any orientation.
   const reach = lift + Math.max(

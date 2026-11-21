@@ -247,3 +247,10 @@ test('text boxes repaint only once obfuscated, at a throttled rate, and back onc
     obfuscateAllTextBoxes(false);
   }
 });
+
+test('text boxes draw after other see-through objects, like the shadow plane', () => {
+  const [balloon] = propWithTextBox().children;
+  const shadowPlane = new Mesh(new PlaneGeometry(100, 100), new MeshBasicMaterial({ transparent: true }));
+  // Three sorts see-through objects by renderOrder before distance.
+  assert.ok(balloon.renderOrder > shadowPlane.renderOrder);
+});
