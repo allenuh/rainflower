@@ -43,6 +43,35 @@ const checkerboardFloor: TextBoxContent = {
   ],
 };
 
+const cloudSky: TextBoxContent = {
+  title: 'Clouds from noise',
+  body: [
+    'The sky is a huge sphere around you, and its shader turns each viewing '
+      + 'direction into cloud or sky. Perlin noise gives smooth random hills; '
+      + 'fbm (fractional Brownian motion) stacks 6 layers of it, each at twice '
+      + 'the frequency and 0.55× the strength of the last, so big shapes get '
+      + 'fine, wispy edges.',
+    { code: 'density = 0.5 + fbm * 0.95;\ncloud = smoothstep(0.5, 0.68, density);' },
+    'smoothstep makes a soft-edged mask: sky below 0.5, cloud above 0.68. '
+      + 'A flat 2D pattern can\'t wrap a sphere without a seam, so three flat '
+      + 'projections are blended by how much the view faces each axis.',
+  ],
+};
+
+const shadowMapping: TextBoxContent = {
+  title: 'Shadow mapping',
+  body: [
+    'Shadows cost an extra render pass. First the scene is drawn from the '
+      + 'key light\'s point of view, keeping only each surface\'s distance to '
+      + 'the light: a 2048×2048 depth image called a shadow map. Sunlight rays '
+      + 'are parallel, so that camera is orthographic.',
+    'Then, while drawing your view, each pixel looks itself up in the map. If '
+      + 'something nearer the light is stored there, the pixel is in shadow.',
+    'PCF filtering averages nearby samples to soften jagged edges, and a small '
+      + 'normal bias stops surfaces shadowing themselves ("shadow acne").',
+  ],
+};
+
 /** Notes on world 1's objects and effects, placed next to what they describe. */
 export function addWorld1Notes(scene: Object3D, props: { cylinder: Object3D }) {
   props.cylinder.add(createTextBox(phongShading, { lift: 3.5 }));
@@ -51,6 +80,16 @@ export function addWorld1Notes(scene: Object3D, props: { cylinder: Object3D }) {
   // On open floor between the teapot and the cube, clear of both from the spawn.
   floorNote.position.set(-2, 0, -14);
   scene.add(floorNote);
+
+  // Hanging in the air, pointing up at the clouds.
+  const skyNote = createTextBox(cloudSky, { pointer: 'up', lift: 0 });
+  skyNote.position.set(-2.5, 17, -30);
+  scene.add(skyNote);
+
+  // On the floor where the key light casts the props' shadows.
+  const shadowNote = createTextBox(shadowMapping, { lift: 1 });
+  shadowNote.position.set(15, 0, -9);
+  scene.add(shadowNote);
 }
 
 export function addTeapotNote(teapot: Object3D) {
