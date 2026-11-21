@@ -1,4 +1,4 @@
-import { BackSide, Color, Mesh, ShaderMaterial, SphereGeometry } from 'three';
+import { BackSide, Color, Mesh, ShaderMaterial, SphereGeometry, Vector3 } from 'three';
 import vertexShader from '../shaders/sunset.vert.glsl?raw';
 import fragmentShader from '../shaders/starfield.frag.glsl?raw';
 import { hash3DGLSL } from '../shaders/utils';
@@ -6,10 +6,13 @@ import { hash3DGLSL } from '../shaders/utils';
 export function createStarfieldSky() {
   const uniforms = {
     uBackground: { value: new Color('#020309') },
-    uDensity: { value: 40 },
-    uCoverage: { value: 0.6 },
-    uStarRadius: { value: 0.0008 },
-    uSmallestStar: { value: 0.15 },
+    // Per layer (x, y, z): sparse bright, medium, dense faint "dust".
+    uLayerDensity: { value: new Vector3(16, 40, 90) },
+    uLayerCoverage: { value: new Vector3(0.6, 0.6, 0.6) },
+    uLayerBrightness: { value: new Vector3(1.2, 0.5, 0.18) },
+    uLayerMask: { value: new Vector3(1, 1, 1) },
+    uMagnitudeExponent: { value: 6 },
+    uStarRadius: { value: 0.0009 },
     uPixelSigma: { value: 0.6 },
     uBrightness: { value: 1.5 },
     uDebugCells: { value: 0 },

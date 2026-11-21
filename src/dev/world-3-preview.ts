@@ -86,6 +86,14 @@ async function start() {
     if (event.code !== 'KeyC' || event.repeat) return;
     uniforms.uDebugCells.value = uniforms.uDebugCells.value > 0.5 ? 0 : 1;
   });
+  // 1, 2 and 3 toggle the bright, medium and faint star layers.
+  const layerKeys = ['Digit1', 'Digit2', 'Digit3'] as const;
+  window.addEventListener('keydown', (event) => {
+    const layer = layerKeys.indexOf(event.code as typeof layerKeys[number]);
+    if (layer < 0 || event.repeat) return;
+    const mask = uniforms.uLayerMask.value;
+    mask.setComponent(layer, mask.getComponent(layer) > 0.5 ? 0 : 1);
+  });
 
   // Pixel loupe: crops of the real canvas, magnified without smoothing.
   const captures: { label: string; image: HTMLCanvasElement }[] = [];
