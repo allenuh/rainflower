@@ -1,7 +1,7 @@
-import { BackSide, Color, Mesh, ShaderMaterial, SphereGeometry, Vector3 } from 'three';
+import { BackSide, Color, Mesh, ShaderMaterial, SphereGeometry, Vector3, Vector4 } from 'three';
 import vertexShader from '../shaders/sunset.vert.glsl?raw';
 import fragmentShader from '../shaders/starfield.frag.glsl?raw';
-import { hash3DGLSL } from '../shaders/utils';
+import { colorRampGLSL, hash3DGLSL } from '../shaders/utils';
 
 export function createStarfieldSky() {
   const uniforms = {
@@ -15,13 +15,22 @@ export function createStarfieldSky() {
     uStarRadius: { value: 0.0009 },
     uPixelSigma: { value: 0.6 },
     uBrightness: { value: 1.5 },
+    // A loose blackbody ramp from cool to hot stars; biased toward white.
+    uStarColors: { value: [
+      new Color('#ffa75c'),
+      new Color('#ffe2b8'),
+      new Color('#ffffff'),
+      new Color('#a9c1ff'),
+    ] },
+    uStarColorStops: { value: new Vector4(0, 0.25, 0.65, 1) },
+    uTintStrength: { value: 0.5 },
     uDebugCells: { value: 0 },
   };
   const material = new ShaderMaterial({
     // The sunset dome's vertex shader ignores camera translation, keeping the
     // stars infinitely far away.
     vertexShader,
-    fragmentShader: `${hash3DGLSL}\n${fragmentShader}`,
+    fragmentShader: `${hash3DGLSL}\n${colorRampGLSL}\n${fragmentShader}`,
     uniforms,
     side: BackSide,
     fog: false,

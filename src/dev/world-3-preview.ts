@@ -86,6 +86,12 @@ async function start() {
     if (event.code !== 'KeyC' || event.repeat) return;
     uniforms.uDebugCells.value = uniforms.uDebugCells.value > 0.5 ? 0 : 1;
   });
+  // T toggles the star tint off and back to its starting strength.
+  const tintStrength = uniforms.uTintStrength.value;
+  window.addEventListener('keydown', (event) => {
+    if (event.code !== 'KeyT' || event.repeat) return;
+    uniforms.uTintStrength.value = uniforms.uTintStrength.value > 0 ? 0 : tintStrength;
+  });
   // 1, 2 and 3 toggle the bright, medium and faint star layers.
   const layerKeys = ['Digit1', 'Digit2', 'Digit3'] as const;
   window.addEventListener('keydown', (event) => {

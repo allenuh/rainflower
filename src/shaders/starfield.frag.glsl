@@ -8,16 +8,30 @@ uniform float uMagnitudeExponent; // Higher makes bright stars rarer.
 uniform float uStarRadius;    // Angular radius (Gaussian sigma) of a full-brightness star, in radians.
 uniform float uPixelSigma;    // Narrowest a star is drawn, in pixels.
 uniform float uBrightness;    // Overall gain.
+uniform vec3 uStarColors[4];  // Temperature ramp: warm orange, pale yellow, white, blue-white.
+uniform vec4 uStarColorStops; // Ramp positions for those colors, in [0, 1].
+uniform float uTintStrength;  // 0 is pure white stars, 1 is the full ramp color.
 uniform float uDebugCells;    // 1 tints the bright layer's lattice cells.
 
 varying vec3 vSkyDirection;
+
+// A star's color from a 0-1 temperature, scaled to unit luminance so the
+// tint changes hue but never brightness. Bright stars take more of the tint,
+// much as the eye only sees color in the brighter stars of a real sky.
+vec3 starTint(float temperature, float flux) {
+  vec3 color = colorRamp(temperature, uStarColorStops, uStarColors);
+  color /= max(dot(color, vec3(0.2126, 0.7152, 0.0722)), 0.0001);
+  float strength = uTintStrength * mix(0.4, 1.0, sqrt(flux));
+  return mix(vec3(1.0), color, strength);
+}
 
 // One star per lattice cell, scattered in 3D and projected onto the sphere,
 // in the spirit of cell-noise starfields (POV-Ray granite thresholds, OSL
 // cellnoise). Working in 3D avoids a longitude seam or crowding at the poles.
 // pixelAngle is the angular width of one pixel at this direction. Each star's
 // visible footprint must stay well under half a cell (about 3 sigma).
-float starLayer(
+// Returns the layer's light, tinted per star.
+vec3 starLayer(
   vec3 direction,
   float density,
   float coverage,
@@ -31,7 +45,7 @@ float starLayer(
   // cell of the point lies in one of them, so no star is cut off at a border.
   vec3 corner = cell + step(0.5, fract(point)) - 1.0;
   float minimumSigma = uPixelSigma * pixelAngle;
-  float light = 0.0;
+  vec3 light = vec3(0.0);
 
   for (int i = 0; i < 8; i++) {
     float index = float(i);
@@ -61,7 +75,9 @@ float starLayer(
     float energy = (radius * radius) / (sigma * sigma);
     // Chord length approximates the angle for these tiny separations.
     float distance = length(direction - starDirection);
-    light += brightness * energy * exp(-0.5 * distance * distance / (sigma * sigma));
+    float temperature = hash31(neighbor + seed + 29.7);
+    light += starTint(temperature, flux)
+      * brightness * energy * exp(-0.5 * distance * distance / (sigma * sigma));
   }
 
   return light;
@@ -78,7 +94,7 @@ void main() {
     color += hash33(floor(direction * uLayerDensity.x)) * 0.12;
   }
 
-  float light = 0.0;
+  vec3 light = vec3(0.0);
   for (int layer = 0; layer < 3; layer++) {
     if (uLayerMask[layer] < 0.5) continue;
     light += starLayer(
@@ -90,7 +106,7 @@ void main() {
       pixelAngle
     );
   }
-  color += vec3(light * uBrightness);
+  color += light * uBrightness;
 
   gl_FragColor = vec4(color, 1.0);
   #include <tonemapping_fragment>
