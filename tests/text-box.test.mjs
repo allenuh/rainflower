@@ -6,7 +6,8 @@ import {
 } from 'three';
 import { setBoundsWithoutTextBoxes } from '../src/player/prop-interaction.ts';
 import {
-  anchorTextBox, findAimedTextBox, obfuscateAllTextBoxes, pickAnotherIndex, pressTextBoxKey, wrapText,
+  anchorTextBox, findAimedTextBox, obfuscateAllTextBoxes, pickAnotherIndex, pressTextBoxKey,
+  updateTextBoxFocus, wrapText,
 } from '../src/ui/text-box.ts';
 
 // One unit per character keeps the expected widths easy to read.
@@ -220,6 +221,7 @@ test('text boxes repaint only once obfuscated, at a throttled rate, and back onc
     paint: (scramble) => painted.push(scramble),
     animated: false,
     scrambled: false,
+    highlighted: false,
   });
   const prop = new Mesh(new BoxGeometry(1, 1, 1));
   const balloon = new Mesh(new PlaneGeometry(1, 1).translate(0, 0.5, 0), new MeshBasicMaterial());
@@ -253,4 +255,65 @@ test('text boxes draw after other see-through objects, like the shadow plane', (
   const shadowPlane = new Mesh(new PlaneGeometry(100, 100), new MeshBasicMaterial({ transparent: true }));
   // Three sorts see-through objects by renderOrder before distance.
   assert.ok(balloon.renderOrder > shadowPlane.renderOrder);
+});
+
+test('the text box F would act on is repainted highlighted, closed or open', () => {
+  // Two props with balloons whose views record how they're painted.
+  const scene = new Object3D();
+  const painted = new Map();
+  const propAt = (x, name) => {
+    const view = (height, kind) => ({
+      texture: { needsUpdate: false },
+      width: 6,
+      height,
+      paint: (scramble, highlight) => painted.get(name).push([kind, highlight]),
+      animated: false,
+      scrambled: false,
+      highlighted: false,
+    });
+    painted.set(name, []);
+    const prop = new Mesh(new BoxGeometry(1, 1, 1));
+    prop.position.x = x;
+    const balloon = new Mesh(new PlaneGeometry(1, 1).translate(0, 0.5, 0), new MeshBasicMaterial());
+    anchorTextBox(balloon, { lift: 4, pointer: 'down', closed: view(1, 'closed'), decks: [[view(3, 'page')]] });
+    prop.add(balloon);
+    scene.add(prop);
+    return prop;
+  };
+  const left = propAt(-6, 'left');
+  const right = propAt(6, 'right');
+  scene.updateMatrixWorld();
+  const atRight = cameraLookingAt(new Vector3(6, 5, 12), new Vector3(6, 5, 0));
+  const atNothing = cameraLookingAt(new Vector3(0, 5, 12), new Vector3(0, 30, 12));
+  const render = () => [left, right].forEach((prop) => prop.children[0].onBeforeRender(null, null, atRight));
+
+  try {
+    render();
+    assert.deepEqual(painted.get('right'), [], 'nothing focused yet: no repaint');
+
+    assert.equal(updateTextBoxFocus(scene, atRight), handleOf(right));
+    render();
+    render();
+    assert.deepEqual(painted.get('right'), [['closed', true]], 'lit once while closed');
+    assert.deepEqual(painted.get('left'), []);
+
+    handleOf(right).advance();
+    render();
+    assert.deepEqual(painted.get('right').at(-1), ['page', true], 'open page: button highlighted');
+
+    updateTextBoxFocus(scene, atNothing);
+    render();
+    assert.deepEqual(painted.get('right').at(-1), ['page', false], 'unhighlighted when aimed away');
+  } finally {
+    updateTextBoxFocus(new Object3D(), atNothing);
+  }
+});
+
+test('F ignores text boxes faded out up close or far away', () => {
+  const { scene } = propsScene();
+  // Aimed straight at the right prop's balloon, from too close and too far.
+  const tooClose = cameraLookingAt(new Vector3(6, 6, 3), new Vector3(6, 6, 0));
+  const tooFar = cameraLookingAt(new Vector3(6, 6, 24.5), new Vector3(6, 6, 0));
+  assert.equal(findAimedTextBox(scene, tooClose), undefined);
+  assert.equal(findAimedTextBox(scene, tooFar), undefined);
 });

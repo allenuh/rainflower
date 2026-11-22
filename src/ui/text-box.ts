@@ -49,12 +49,16 @@ export interface TextBoxView {
   texture: Texture | null;
   width: number;
   height: number;
-  /** Redraws the view into its texture's canvas, with its text scrambled or not. */
-  paint?: (scramble: boolean) => void;
+  /**
+   * Redraws the view into its texture's canvas, with its text scrambled or
+   * not, and highlighted or not (the balloon F would act on).
+   */
+  paint?: (scramble: boolean, highlight: boolean) => void;
   /** Has obfuscated text, so it keeps re-scrambling even when the rest isn't. */
   animated?: boolean;
-  /** Whether it was last painted scrambled. */
+  /** Whether it was last painted scrambled, and highlighted. */
   scrambled?: boolean;
+  highlighted?: boolean;
 }
 
 // Set by obfuscateAllTextBoxes: every balloon's text is scrambled.
@@ -114,6 +118,7 @@ const colors = {
   hint: '#555555',
   codePanel: '#ffffff',
   buttonFace: '#d4d0c8',
+  buttonFaceFocused: '#a19d95',
   bevelShadow: '#808080',
   bevelDark: '#404040',
   bevelLight: '#ffffff',
@@ -125,11 +130,25 @@ const showRange = 25;
 // on top of or hold its prop.
 const nearFadeStart = 6;
 const nearFadeEnd = 8;
+
+/**
+ * How visible a balloon is from `distance` away: 0 up close and far off, 1 at
+ * reading distance. Only balloons at least half visible can be aimed at, so F
+ * never opens one you can't see.
+ */
+function visibility(distance: number) {
+  return MathUtils.smoothstep(distance, nearFadeStart, nearFadeEnd)
+    * (1 - MathUtils.smoothstep(distance, showRange - 3, showRange));
+}
 // How far off the centre of your view a balloon or its object can be and
 // still be the one F opens, in radians.
 const aimAngle = 0.25;
 // Obfuscated text re-scrambles this often, in milliseconds (about Minecraft's 20 ticks a second).
 const repaintInterval = 50;
+// The balloon F would act on is highlighted, so the player can see which one
+// they're aiming at: a closed balloon is darkened by washing it with this much
+// black, and an open one's Next or Close button is drawn darker.
+const focusDarken = 0.15;
 // Characters obfuscated text cycles through: half the basic alphabet, digits,
 // some Latin-1 symbols and accented capitals, and U+FFFD (the replacement
 // character). Each character only swaps for ones about as wide as itself, so
@@ -219,7 +238,7 @@ function buildTextBox(
   const unitsPerPixel = width / layout.width;
   const toView = ({ canvas, paint, animated }: {
     canvas: HTMLCanvasElement;
-    paint: (scramble: boolean) => void;
+    paint: (scramble: boolean, highlight: boolean) => void;
     animated: boolean;
   }): TextBoxView => {
     const texture = new CanvasTexture(canvas);
@@ -232,6 +251,7 @@ function buildTextBox(
       paint,
       animated,
       scrambled: false,
+      highlighted: false,
     };
   };
   const closed = toView(drawClosedBalloon(title, pointer));
@@ -333,15 +353,18 @@ export function anchorTextBox(
     if (distance > showRange) page = -1; // Walking away closes it.
 
     const view = currentView();
-    // Scrambled text re-scrambles at a steady rate while it's on screen.
-    // Views only repaint when they need to: never for plain static text.
+    // Views only repaint when they need to: when they gain or lose the focus
+    // highlight, or scramble or unscramble; and scrambled text re-scrambles at
+    // a steady rate while it's on screen. Plain static text never repaints.
     if (view.paint && view.texture) {
       const now = performance.now();
+      const highlight = handle === focused;
       const animating = obfuscateAll || view.animated;
-      const stale = view.scrambled !== obfuscateAll;
+      const stale = view.scrambled !== obfuscateAll || view.highlighted !== highlight;
       if (stale || (animating && now - lastRepaint >= repaintInterval)) {
-        view.paint(obfuscateAll);
+        view.paint(obfuscateAll, highlight);
         view.scrambled = obfuscateAll;
+        view.highlighted = highlight;
         view.texture.needsUpdate = true;
         lastRepaint = now;
       }
@@ -349,15 +372,27 @@ export function anchorTextBox(
     mesh.material.map = view.texture;
     tip.copy(anchor).y += lift;
     mesh.matrixWorld.compose(tip, cameraRotation, viewScale.set(view.width, view.height, 1));
-    mesh.material.opacity = MathUtils.smoothstep(distance, nearFadeStart, nearFadeEnd)
-      * (1 - MathUtils.smoothstep(distance, showRange - 3, showRange));
+    mesh.material.opacity = visibility(distance);
   };
   return handle;
 }
 
+// The balloon F would act on, drawn darker; set by updateTextBoxFocus.
+let focused: TextBoxHandle | undefined;
+
 /**
- * The balloon in `scene` the camera is aiming at: within reading range, with
- * its object or its balloon closest to the centre of view and within aimAngle.
+ * Work out which balloon in `scene` F would act on from `camera`, and draw it
+ * darker. Call once a frame, before rendering. Returns that balloon, if any.
+ */
+export function updateTextBoxFocus(scene: Object3D, camera: Camera) {
+  focused = findAimedTextBox(scene, camera);
+  return focused;
+}
+
+/**
+ * The balloon in `scene` the camera is aiming at: at least half visible (not
+ * faded out up close or far off), with its object or its balloon closest to
+ * the centre of view and within aimAngle.
  */
 export function findAimedTextBox(scene: Object3D, camera: Camera) {
   camera.getWorldPosition(cameraPosition);
@@ -368,7 +403,7 @@ export function findAimedTextBox(scene: Object3D, camera: Camera) {
     const handle = object.userData.textBox as TextBoxHandle | undefined;
     if (!handle) return;
     handle.aimPoints(anchorPoint, balloonPoint);
-    if (cameraPosition.distanceTo(anchorPoint) > showRange) return;
+    if (visibility(cameraPosition.distanceTo(anchorPoint)) < 0.5) return;
     const angle = Math.min(
       forward.angleTo(anchorPoint.sub(cameraPosition)),
       forward.angleTo(balloonPoint.sub(cameraPosition)),
@@ -533,8 +568,9 @@ function paginate(body: TextBoxParagraph[]) {
 }
 
 /**
- * A canvas sized for a balloon with `contentHeight` of content, and
- * paintBalloon(), which clears it to a blank balloon ready to draw into.
+ * A canvas sized for a balloon with `contentHeight` of content;
+ * paintBalloon(), which clears it to a blank balloon ready to draw into; and
+ * darkenBalloon(amount), which washes everything drawn so far with black.
  */
 function createBalloonCanvas(width: number, contentHeight: number, pointer: 'down' | 'up') {
   const balloonHeight = contentHeight + layout.padding * 2;
@@ -554,7 +590,12 @@ function createBalloonCanvas(width: number, contentHeight: number, pointer: 'dow
     context.strokeStyle = colors.ink;
     context.stroke();
   };
-  return { canvas, context, contentTop: top + layout.padding, paintBalloon };
+  const darkenBalloon = (amount: number) => {
+    traceBalloon(context, width, top, balloonHeight, pointer);
+    context.fillStyle = `rgba(0, 0, 0, ${amount})`;
+    context.fill();
+  };
+  return { canvas, context, contentTop: top + layout.padding, paintBalloon, darkenBalloon };
 }
 
 function drawTitle(
@@ -577,36 +618,39 @@ function drawTitle(
 }
 
 /**
- * The closed balloon: just the title and a hint to press F. paint(scramble)
- * redraws it, with its text scrambled or not.
+ * The closed balloon: just the title and a hint to press F.
+ * paint(scramble, highlight) redraws it, with its text scrambled or not, and
+ * darkened when it's the balloon F would open.
  */
 function drawClosedBalloon(title: string, pointer: 'down' | 'up') {
   const hint = 'Press F to read';
   const titleWidth = layout.iconSize + 6 + createMeasure(fonts.title)(title);
   const hintWidth = createMeasure(fonts.hint)(hint);
   const width = Math.ceil(Math.max(titleWidth, hintWidth) + layout.padding * 2);
-  const { canvas, context, contentTop, paintBalloon } = createBalloonCanvas(
+  const { canvas, context, contentTop, paintBalloon, darkenBalloon } = createBalloonCanvas(
     width,
     layout.titleHeight + layout.hintHeight,
     pointer,
   );
-  const paint = (scramble: boolean) => {
+  const paint = (scramble: boolean, highlight: boolean) => {
     paintBalloon();
     drawTitle(context, title, contentTop, scramble);
     context.fillStyle = colors.hint;
     context.textBaseline = 'top';
     context.font = fonts.hint;
     fillText(context, hint, layout.padding, contentTop + layout.titleHeight + 1, scramble);
+    if (highlight) darkenBalloon(focusDarken);
   };
-  paint(false);
+  paint(false, false);
   return { canvas, paint, animated: false };
 }
 
 /**
  * One open page: title, body, then a page count and a Next or Close button.
- * paint(scramble) redraws it, with its text scrambled or not; obfuscated
- * paragraphs are always scrambled, and a page with any is `animated`. The
- * page count and button stay readable.
+ * paint(scramble, highlight) redraws it, with its text scrambled or not, and
+ * its button darker when F would press it. Obfuscated paragraphs are always
+ * scrambled, and a page with any is `animated`. The page count and button
+ * stay readable.
  */
 function drawPage(
   title: string,
@@ -627,7 +671,7 @@ function drawPage(
     pointer,
   );
 
-  const paint = (scramble: boolean) => {
+  const paint = (scramble: boolean, highlight: boolean) => {
     paintBalloon();
     drawTitle(context, title, contentTop, scramble);
 
@@ -651,9 +695,9 @@ function drawPage(
       context.font = fonts.hint;
       context.fillText(`Page ${index + 1} of ${pageCount}`, layout.padding, buttonTop + layout.buttonHeight / 2);
     }
-    drawButton(context, index + 1 < pageCount ? 'Next (F)' : 'Close (F)', buttonTop);
+    drawButton(context, index + 1 < pageCount ? 'Next (F)' : 'Close (F)', buttonTop, highlight);
   };
-  paint(false);
+  paint(false, false);
   return { canvas, paint, animated: paragraphs.some((paragraph) => paragraph.obfuscated) };
 }
 
@@ -668,19 +712,25 @@ function drawCodePanel(context: CanvasRenderingContext2D, top: number, height: n
   drawBevel(context, left, upper, right, lower, colors.bevelShadow, colors.bevelLight);
 }
 
-/** A raised push button, right-aligned in the balloon. */
-function drawButton(context: CanvasRenderingContext2D, label: string, top: number) {
+/** A raised push button, right-aligned in the balloon; darker when highlighted. */
+function drawButton(
+  context: CanvasRenderingContext2D,
+  label: string,
+  top: number,
+  highlight: boolean,
+) {
   context.font = fonts.body;
   const width = Math.ceil(context.measureText(label).width + layout.buttonPadding * 2);
   const right = layout.width - layout.padding - 0.5;
   const left = right - width;
   const upper = top + 0.5;
   const lower = upper + layout.buttonHeight - 1;
-  context.fillStyle = colors.buttonFace;
+  const face = highlight ? colors.buttonFaceFocused : colors.buttonFace;
+  context.fillStyle = face;
   context.fillRect(left, upper, width, lower - upper);
   context.lineWidth = 1;
   drawBevel(context, left, upper, right, lower, colors.bevelLight, colors.bevelDark);
-  drawBevel(context, left + 1, upper + 1, right - 1, lower - 1, colors.buttonFace, colors.bevelShadow);
+  drawBevel(context, left + 1, upper + 1, right - 1, lower - 1, face, colors.bevelShadow);
   context.fillStyle = colors.ink;
   context.textBaseline = 'middle';
   context.textAlign = 'center';

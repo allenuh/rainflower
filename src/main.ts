@@ -18,7 +18,7 @@ import { createPortalLifecycle } from './portals/lifecycle';
 import { createPhysicsDebug } from './physics/debug';
 import { createPlayer, playerEyeHeight } from './player/controller';
 import { createPropInteraction } from './player/prop-interaction';
-import { pressTextBoxKey } from './ui/text-box';
+import { pressTextBoxKey, updateTextBoxFocus } from './ui/text-box';
 import clickUrl from './assets/audio/click.mp3?url';
 
 const clickSound = new Audio(clickUrl);
@@ -263,6 +263,8 @@ async function start() {
         renderer.renderLists.dispose();
       });
     }
+    // Darken the text box F would act on, using the same aim as the key.
+    updateTextBoxFocus(activeEnvironment.scene, camera);
     portals.render(viewEnvironment, viewCamera, deltaSeconds);
     viewEnvironment.observe(viewCamera);
     renderer.render(viewEnvironment.scene, viewCamera);
