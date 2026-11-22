@@ -5,10 +5,11 @@ import type { Physics } from '../physics/world';
 import { createSky } from './sky';
 import { createPrimitives } from './primitives';
 import { createTeapot } from './teapot';
+import { createSuzanne } from './suzanne';
 import { disposeObjectResources } from './environment';
 import { createVanishingProps } from './vanishing-props';
 import { createVanishingSequence } from './vanishing-sequence';
-import { addTeapotNote, addWorld1Notes } from './world-1-notes';
+import { addSuzanneNote, addTeapotNote, addWorld1Notes } from './world-1-notes';
 import { obfuscateAllTextBoxes } from '../ui/text-box';
 
 // Sphere respawns that arm the first stage; each later stage needs one more.
@@ -62,7 +63,7 @@ export function createWorld1(physics: Physics) {
   const loadingManager = new LoadingManager();
   // Resolves once late-loaded assets are in the scene (or failed to load), so
   // their shaders can be pre-warmed before the player first sees them.
-  const ready = createTeapot(physics, loadingManager)
+  const teapotReady = createTeapot(physics, loadingManager)
     .then((teapot) => {
       if (teapot && physics.disposed) disposeObjectResources(teapot);
       else if (teapot) {
@@ -75,6 +76,19 @@ export function createWorld1(physics: Physics) {
       sequence.provide('teapot', undefined);
       if (!physics.disposed) console.error('Unable to load the Utah teapot:', error);
     });
+  // Suzanne isn't part of the vanishing sequence.
+  const suzanneReady = createSuzanne(physics, loadingManager)
+    .then((suzanne) => {
+      if (suzanne && physics.disposed) disposeObjectResources(suzanne);
+      else if (suzanne) {
+        addSuzanneNote(suzanne);
+        scene.add(suzanne);
+      }
+    })
+    .catch((error) => {
+      if (!physics.disposed) console.error('Unable to load Suzanne:', error);
+    });
+  const ready = Promise.all([teapotReady, suzanneReady]).then(() => undefined);
 
   return {
     scene,

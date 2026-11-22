@@ -1,4 +1,5 @@
 import type { Object3D } from 'three';
+import { suzanneHeight } from './suzanne';
 import {
   createRandomTextBox,
   createTextBox,
@@ -53,6 +54,32 @@ const utahTeapot: TextBoxContent = {
       + 'The Simpsons. The real teapot is at the Computer History Museum in '
       + 'California.',
     'Other teapots pour tea, this one pours dirty soda.',
+  ],
+};
+
+const suzanne: TextBoxContent = {
+  title: 'Suzanne',
+  body: [
+    'Meet Suzanne, the 3D software Blender\'s test monkey: a chimp head of '
+      + 'about 500 faces that comes built in, one click away. She\'s Blender\'s '
+      + 'answer to the Utah teapot.',
+    'Willem-Paul van Overbruggen (known as SLiD3) modelled her for Blender '
+      + '2.25 in early 2002, the last version made by Not a Number, the company '
+      + 'behind Blender before it shut down.',
+    pageBreak,
+    'She\'s named after the orangutan in Kevin Smith\'s film Jay and Silent '
+      + 'Bob Strike Back.',
+    'Later in 2002, Blender\'s users raised €100,000 to buy its source code '
+      + 'back, and Blender became free and open source. Suzanne became the '
+      + 'mascot of a tool now used for films, games and art worldwide.',
+    pageBreak,
+    'Like the teapot, she\'s a handy test: a few hundred faces with flat '
+      + 'cheeks, deep eye sockets and thin ears show off shading, smoothing and '
+      + 'other effects. The Blender Conference\'s yearly animation awards are '
+      + 'called the Suzanne Awards.',
+    'This one is an OBJ mesh. For physics she\'s a convex hull, the tightest '
+      + 'shape around her with no dents, which is much cheaper to collide than '
+      + 'her exact mesh.',
   ],
 };
 
@@ -290,6 +317,7 @@ const propTops = {
   diamond: 2.625, // The octahedron's points.
   sphere: 2, // Both spheres' radius.
   teapot: 4.5, // Its origin is at its base; it stands 4.5 units tall.
+  suzanne: suzanneHeight, // Her origin is at her chin.
 };
 
 export function addWorld1Notes(
@@ -319,4 +347,8 @@ export function addWorld1Notes(
 
 export function addTeapotNote(teapot: Object3D) {
   teapot.add(createTextBox(utahTeapot, { lift: propTops.teapot + propBalloonGap }));
+}
+
+export function addSuzanneNote(model: Object3D) {
+  model.add(createTextBox(suzanne, { lift: propTops.suzanne + propBalloonGap }));
 }
