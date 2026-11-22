@@ -275,17 +275,31 @@ const lessons: TextBoxParagraph[][] = [
   ],
 ];
 
+// Gap between the top of a prop and the tip of its balloon's tail.
+const propBalloonGap = 0.2;
+// The octahedron's balloon tail tucks slightly below its top point.
+const diamondBalloonGap = -0.1;
+// How far each prop reaches above its origin (the point its balloon follows).
+const propTops = {
+  cylinder: 2.25, // Half its 4.5 height.
+  diamond: 2.625, // The octahedron's points.
+  sphere: 2, // Both spheres' radius.
+  teapot: 4.5, // Its origin is at its base; it stands 4.5 units tall.
+};
+
 export function addWorld1Notes(
   scene: Object3D,
   props: { cylinder: Object3D; diamond: Object3D; sphere: Object3D; magentaSphere: Object3D },
 ) {
-  props.cylinder.add(createTextBox(phongShading, { lift: 3.5 }));
-  // The octahedron's points reach 2.625 units from its center.
-  props.diamond.add(createTextBox(shadowMapping, { lift: 4 }));
-  props.sphere.add(createRandomTextBox({ title: 'Did you know?', entries: funFacts }, { lift: 3.5 }));
+  props.cylinder.add(createTextBox(phongShading, { lift: propTops.cylinder + propBalloonGap }));
+  props.diamond.add(createTextBox(shadowMapping, { lift: propTops.diamond + diamondBalloonGap }));
+  props.sphere.add(createRandomTextBox(
+    { title: 'Did you know?', entries: funFacts },
+    { lift: propTops.sphere + propBalloonGap },
+  ));
   props.magentaSphere.add(createRandomTextBox(
     { title: 'Graphics 101', entries: lessons, first: lessons.indexOf(graphicsPipeline) },
-    { lift: 3.5 },
+    { lift: propTops.sphere + propBalloonGap },
   ));
   const floorNote = createTextBox(checkerboardFloor, { lift: 1 });
   // On open floor between the teapot and the cube, clear of both from the spawn.
@@ -299,6 +313,5 @@ export function addWorld1Notes(
 }
 
 export function addTeapotNote(teapot: Object3D) {
-  // The teapot's origin is at its base; it stands 4.5 units tall.
-  teapot.add(createTextBox(utahTeapot, { lift: 5.5 }));
+  teapot.add(createTextBox(utahTeapot, { lift: propTops.teapot + propBalloonGap }));
 }
