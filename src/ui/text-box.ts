@@ -72,6 +72,18 @@ export function obfuscateAllTextBoxes(on = true) {
   obfuscateAll = on;
 }
 
+// Set by toggleTextBoxes: every balloon is hidden, and can't be aimed at or opened.
+let hidden = false;
+
+/**
+ * Hide every text box, or show them again. Hidden balloons keep their state
+ * (an open one is still open when shown again). Returns whether they're now hidden.
+ */
+export function toggleTextBoxes(hide = !hidden) {
+  hidden = hide;
+  return hidden;
+}
+
 /** A balloon's reading state, kept on its mesh as `userData.textBox`. */
 export interface TextBoxHandle {
   /** The open page, or -1 while closed. */
@@ -356,7 +368,7 @@ export function anchorTextBox(
     // Views only repaint when they need to: when they gain or lose the focus
     // highlight, or scramble or unscramble; and scrambled text re-scrambles at
     // a steady rate while it's on screen. Plain static text never repaints.
-    if (view.paint && view.texture) {
+    if (view.paint && view.texture && !hidden) {
       const now = performance.now();
       const highlight = handle === focused;
       const animating = obfuscateAll || view.animated;
@@ -372,7 +384,7 @@ export function anchorTextBox(
     mesh.material.map = view.texture;
     tip.copy(anchor).y += lift;
     mesh.matrixWorld.compose(tip, cameraRotation, viewScale.set(view.width, view.height, 1));
-    mesh.material.opacity = visibility(distance);
+    mesh.material.opacity = hidden ? 0 : visibility(distance);
   };
   return handle;
 }
@@ -392,9 +404,10 @@ export function updateTextBoxFocus(scene: Object3D, camera: Camera) {
 /**
  * The balloon in `scene` the camera is aiming at: at least half visible (not
  * faded out up close or far off), with its object or its balloon closest to
- * the centre of view and within aimAngle.
+ * the centre of view and within aimAngle. None while balloons are hidden.
  */
 export function findAimedTextBox(scene: Object3D, camera: Camera) {
+  if (hidden) return undefined;
   camera.getWorldPosition(cameraPosition);
   camera.getWorldDirection(forward);
   let best: TextBoxHandle | undefined;
@@ -418,10 +431,12 @@ export function findAimedTextBox(scene: Object3D, camera: Camera) {
 
 /**
  * F: open the aimed-at balloon, or turn its page, or close it after the last
- * page. Any other open balloon closes, so only one is open at a time.
- * Returns whether any balloon opened, turned a page or closed.
+ * page. Any other open balloon closes, so only one is open at a time. Does
+ * nothing while balloons are hidden. Returns whether any balloon opened,
+ * turned a page or closed.
  */
 export function pressTextBoxKey(scene: Object3D, camera: Camera) {
+  if (hidden) return false;
   const aimed = findAimedTextBox(scene, camera);
   let changed = false;
   scene.traverse((object) => {

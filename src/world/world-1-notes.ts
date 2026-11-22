@@ -99,8 +99,14 @@ const shadowMapping: TextBoxContent = {
 };
 
 /** Notes on world 1's objects and effects, placed next to what they describe. */
-// The green sphere shows one at random each time it's opened.
+// The green sphere shows the hide tip first, then one at random each time it's opened.
+// How to hide the balloons; the first thing the green sphere says.
+const hideTip: TextBoxParagraph[] = [
+  'Text boxes in the way? Press H to toggle/hide them!',
+];
+
 const funFacts: TextBoxParagraph[][] = [
+  hideTip,
   [
     'In 1963, Ivan Sutherland\'s Sketchpad let people draw straight onto a '
       + 'screen with a light pen, then move and constrain the shapes. It\'s '
@@ -293,7 +299,7 @@ export function addWorld1Notes(
   props.cylinder.add(createTextBox(phongShading, { lift: propTops.cylinder + propBalloonGap }));
   props.diamond.add(createTextBox(shadowMapping, { lift: propTops.diamond + diamondBalloonGap }));
   props.sphere.add(createRandomTextBox(
-    { title: 'Did you know?', entries: funFacts },
+    { title: 'Did you know?', entries: funFacts, first: funFacts.indexOf(hideTip) },
     { lift: propTops.sphere + propBalloonGap },
   ));
   props.magentaSphere.add(createRandomTextBox(

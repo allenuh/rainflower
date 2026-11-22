@@ -18,7 +18,7 @@ import { createPortalLifecycle } from './portals/lifecycle';
 import { createPhysicsDebug } from './physics/debug';
 import { createPlayer, playerEyeHeight } from './player/controller';
 import { createPropInteraction } from './player/prop-interaction';
-import { pressTextBoxKey, updateTextBoxFocus } from './ui/text-box';
+import { pressTextBoxKey, toggleTextBoxes, updateTextBoxFocus } from './ui/text-box';
 import clickUrl from './assets/audio/click.mp3?url';
 
 const clickSound = new Audio(clickUrl);
@@ -149,6 +149,12 @@ async function start() {
     event.preventDefault();
     // Open, page through or close the text box you're looking at.
     if (pressTextBoxKey(activeEnvironment.scene, camera)) playClick();
+  });
+  window.addEventListener('keydown', (event) => {
+    if (event.code !== 'KeyH' || !controls.isLocked || event.repeat) return;
+    event.preventDefault();
+    // Hide every text box, or bring them back.
+    toggleTextBoxes();
   });
   renderer.domElement.addEventListener('mousedown', (event) => {
     if (event.button === 0 && controls.isLocked) interaction.throwHeld(camera);

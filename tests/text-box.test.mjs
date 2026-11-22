@@ -7,7 +7,7 @@ import {
 import { setBoundsWithoutTextBoxes } from '../src/player/prop-interaction.ts';
 import {
   anchorTextBox, findAimedTextBox, obfuscateAllTextBoxes, pickAnotherIndex, pressTextBoxKey,
-  updateTextBoxFocus, wrapText,
+  toggleTextBoxes, updateTextBoxFocus, wrapText,
 } from '../src/ui/text-box.ts';
 
 // One unit per character keeps the expected widths easy to read.
@@ -316,4 +316,27 @@ test('F ignores text boxes faded out up close or far away', () => {
   const tooFar = cameraLookingAt(new Vector3(6, 6, 24.5), new Vector3(6, 6, 0));
   assert.equal(findAimedTextBox(scene, tooClose), undefined);
   assert.equal(findAimedTextBox(scene, tooFar), undefined);
+});
+
+test('hidden text boxes vanish, and can\'t be aimed at, opened or closed until shown', () => {
+  const { scene, right } = propsScene();
+  const atRight = cameraLookingAt(new Vector3(6, 5, 12), new Vector3(6, 5, 0));
+  const [balloon] = right.children;
+
+  try {
+    handleOf(right).advance(); // Open before hiding.
+    assert.equal(toggleTextBoxes(), true);
+    balloon.onBeforeRender(null, null, atRight);
+    assert.equal(balloon.material.opacity, 0);
+    assert.equal(findAimedTextBox(scene, atRight), undefined);
+    assert.equal(pressTextBoxKey(scene, atRight), false);
+    assert.equal(handleOf(right).page, 0, 'still open behind the scenes');
+
+    assert.equal(toggleTextBoxes(), false);
+    balloon.onBeforeRender(null, null, atRight);
+    assert.ok(balloon.material.opacity > 0);
+    assert.equal(findAimedTextBox(scene, atRight), handleOf(right));
+  } finally {
+    toggleTextBoxes(false);
+  }
 });
