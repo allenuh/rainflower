@@ -1,4 +1,5 @@
 import type { Object3D } from 'three';
+import { bunnyHeight } from './stanford-bunny';
 import { suzanneHeight } from './suzanne';
 import {
   createRandomTextBox,
@@ -80,6 +81,30 @@ const suzanne: TextBoxContent = {
     'This one is an OBJ mesh. For physics she\'s a convex hull, the tightest '
       + 'shape around her with no dents, which is much cheaper to collide than '
       + 'her exact mesh.',
+  ],
+};
+
+const stanfordBunny: TextBoxContent = {
+  title: 'The Stanford bunny',
+  body: [
+    'After the teapot, this may be graphics\' most famous test model. Nobody '
+      + 'modelled it by hand: it\'s a 3D scan of a clay bunny, made in 1994 by '
+      + 'Greg Turk and Marc Levoy at Stanford University.',
+    'Turk reportedly bought the figurine at a garden shop near campus.',
+    pageBreak,
+    'A laser scanner measured it from 10 directions, each scan a grid of '
+      + 'distances called a range image. Turk and Levoy\'s "zippering" method '
+      + 'stitched the scans into one mesh of 35,947 vertices and 69,451 '
+      + 'triangles.',
+    'The scanner couldn\'t see underneath, so the original mesh has holes in '
+      + 'its base.',
+    pageBreak,
+    'Shared freely in the Stanford 3D Scanning Repository, it became a '
+      + 'standard test for simplifying, smoothing and rendering detailed '
+      + 'meshes.',
+    'This is the full scan, which comes without normals. The game works them '
+      + 'out itself, averaging the triangles around each vertex, so the bunny '
+      + 'shades smoothly instead of looking faceted.',
   ],
 };
 
@@ -318,6 +343,7 @@ const propTops = {
   sphere: 2, // Both spheres' radius.
   teapot: 4.5, // Its origin is at its base; it stands 4.5 units tall.
   suzanne: suzanneHeight, // Her origin is at her chin.
+  bunny: bunnyHeight, // Its origin is at its base.
 };
 
 export function addWorld1Notes(
@@ -351,4 +377,8 @@ export function addTeapotNote(teapot: Object3D) {
 
 export function addSuzanneNote(model: Object3D) {
   model.add(createTextBox(suzanne, { lift: propTops.suzanne + propBalloonGap }));
+}
+
+export function addBunnyNote(bunny: Object3D) {
+  bunny.add(createTextBox(stanfordBunny, { lift: propTops.bunny + propBalloonGap }));
 }

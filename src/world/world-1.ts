@@ -1,4 +1,12 @@
-import { Color, LoadingManager, Mesh, PlaneGeometry, Scene, ShaderMaterial } from 'three';
+import {
+  Color,
+  LoadingManager,
+  Mesh,
+  PlaneGeometry,
+  Scene,
+  ShaderMaterial,
+  type Object3D,
+} from 'three';
 import groundVertexShader from '../shaders/ground.vert.glsl?raw';
 import groundFragmentShader from '../shaders/ground.frag.glsl?raw';
 import type { Physics } from '../physics/world';
@@ -6,10 +14,11 @@ import { createSky } from './sky';
 import { createPrimitives } from './primitives';
 import { createTeapot } from './teapot';
 import { createSuzanne } from './suzanne';
+import { createStanfordBunny } from './stanford-bunny';
 import { disposeObjectResources } from './environment';
 import { createVanishingProps } from './vanishing-props';
 import { createVanishingSequence } from './vanishing-sequence';
-import { addSuzanneNote, addTeapotNote, addWorld1Notes } from './world-1-notes';
+import { addBunnyNote, addSuzanneNote, addTeapotNote, addWorld1Notes } from './world-1-notes';
 import { obfuscateAllTextBoxes } from '../ui/text-box';
 
 // Sphere respawns that arm the first stage; each later stage needs one more.
@@ -76,19 +85,29 @@ export function createWorld1(physics: Physics) {
       sequence.provide('teapot', undefined);
       if (!physics.disposed) console.error('Unable to load the Utah teapot:', error);
     });
-  // Suzanne isn't part of the vanishing sequence.
-  const suzanneReady = createSuzanne(physics, loadingManager)
-    .then((suzanne) => {
-      if (suzanne && physics.disposed) disposeObjectResources(suzanne);
-      else if (suzanne) {
-        addSuzanneNote(suzanne);
-        scene.add(suzanne);
-      }
-    })
-    .catch((error) => {
-      if (!physics.disposed) console.error('Unable to load Suzanne:', error);
-    });
-  const ready = Promise.all([teapotReady, suzanneReady]).then(() => undefined);
+  // Late-loaded props outside the vanishing sequence: add each with its note.
+  function addLoadedProp(
+    name: string,
+    load: Promise<Object3D | undefined>,
+    addNote: (prop: Object3D) => void,
+  ) {
+    return load
+      .then((prop) => {
+        if (prop && physics.disposed) disposeObjectResources(prop);
+        else if (prop) {
+          addNote(prop);
+          scene.add(prop);
+        }
+      })
+      .catch((error) => {
+        if (!physics.disposed) console.error(`Unable to load ${name}:`, error);
+      });
+  }
+  const ready = Promise.all([
+    teapotReady,
+    addLoadedProp('Suzanne', createSuzanne(physics, loadingManager), addSuzanneNote),
+    addLoadedProp('the Stanford bunny', createStanfordBunny(physics, loadingManager), addBunnyNote),
+  ]).then(() => undefined);
 
   return {
     scene,
