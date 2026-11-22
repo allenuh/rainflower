@@ -52,8 +52,7 @@ const utahTeapot: TextBoxContent = {
     'It became the mascot of computer graphics, with cameos in Toy Story and '
       + 'The Simpsons. The real teapot is at the Computer History Museum in '
       + 'California.',
-    'This one is a triangle mesh loaded from an OBJ file. While a normal '
-      + 'teapot pours tea, this one pours dirty soda.',
+    'Other teapots pour tea, this one pours dirty soda.',
   ],
 };
 
